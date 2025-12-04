@@ -9,7 +9,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const fullUser = getUserById(user.id);
+  const fullUser = await getUserById(user.id);
   if (!fullUser) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }

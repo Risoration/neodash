@@ -8,7 +8,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const config = getUserConfig(user.id);
+  const config = await getUserConfig(user.id);
   const apiKey = config?.preferences?.extensionApiKey;
 
   // For now, we'll assume extension is connected if API key exists

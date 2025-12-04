@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     const endDate = searchParams.get("endDate");
     const category = searchParams.get("category");
 
-    const userData = getUserData(user.id);
+    const userData = await getUserData(user.id);
     if (!userData?.financial) {
       return NextResponse.json({ transactions: [] });
     }
@@ -70,7 +70,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const userData = getUserData(user.id);
+    const userData = await getUserData(user.id);
     if (!userData?.financial) {
       return NextResponse.json(
         { error: "No financial data found" },
@@ -191,7 +191,7 @@ export async function PUT(request: Request) {
       );
     }
 
-    const userData = getUserData(user.id);
+    const userData = await getUserData(user.id);
     if (!userData?.financial) {
       return NextResponse.json(
         { error: "No financial data found" },
@@ -302,7 +302,7 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const userData = getUserData(user.id);
+    const userData = await getUserData(user.id);
     if (!userData?.financial) {
       return NextResponse.json(
         { error: "No financial data found" },

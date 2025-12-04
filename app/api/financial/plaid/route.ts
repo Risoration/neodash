@@ -94,7 +94,7 @@ export async function POST(request: Request) {
       );
 
       // Update user's financial data
-      const userData = getUserData(user.id);
+      const userData = await getUserData(user.id);
       const existingFinancial = userData?.financial || {
         totalBalance: 0,
         totalIncome: 0,

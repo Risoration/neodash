@@ -8,7 +8,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const config = getUserConfig(user.id);
+  const config = await getUserConfig(user.id);
   return NextResponse.json({
     preferences: config?.preferences || {
       temperatureUnit: "fahrenheit",
@@ -41,8 +41,8 @@ export async function PUT(request: Request) {
       );
     }
 
-    const currentConfig = getUserConfig(user.id);
-    updateUserConfig(user.id, {
+    const currentConfig = await getUserConfig(user.id);
+    await updateUserConfig(user.id, {
       preferences: {
         ...currentConfig?.preferences,
         temperatureUnit: temperatureUnit || currentConfig?.preferences?.temperatureUnit || "fahrenheit",
@@ -51,7 +51,7 @@ export async function PUT(request: Request) {
     });
 
     // If user has weather data, refresh it with the new unit
-    const userData = getUserData(user.id);
+    const userData = await getUserData(user.id);
     if (userData?.weather?.location) {
       // Trigger weather data refresh by calling the setup endpoint
       // This will re-fetch weather with the new unit preference

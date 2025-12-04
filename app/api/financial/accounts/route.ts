@@ -13,7 +13,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userData = getUserData(user.id);
+  const userData = await getUserData(user.id);
   const accounts = userData?.financial?.accounts || [];
 
   return NextResponse.json({ accounts });
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const userData = getUserData(user.id);
+    const userData = await getUserData(user.id);
     const existingFinancial = userData?.financial || {
       totalBalance: 0,
       totalIncome: 0,
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
       totalBalance,
     };
 
-    updateFinancialData(user.id, updatedFinancial);
+    await updateFinancialData(user.id, updatedFinancial);
 
     return NextResponse.json({ account: newAccount, message: "Account added" });
   } catch (error) {
@@ -110,7 +110,7 @@ export async function PUT(request: Request) {
       );
     }
 
-    const userData = getUserData(user.id);
+    const userData = await getUserData(user.id);
     if (!userData?.financial) {
       return NextResponse.json(
         { error: "No financial data found" },
@@ -140,7 +140,7 @@ export async function PUT(request: Request) {
       totalBalance,
     };
 
-    updateFinancialData(user.id, updatedFinancial);
+    await updateFinancialData(user.id, updatedFinancial);
 
     return NextResponse.json({ message: "Account updated" });
   } catch (error) {
@@ -169,7 +169,7 @@ export async function DELETE(request: Request) {
       );
     }
 
-    const userData = getUserData(user.id);
+    const userData = await getUserData(user.id);
     if (!userData?.financial) {
       return NextResponse.json(
         { error: "No financial data found" },
@@ -196,7 +196,7 @@ export async function DELETE(request: Request) {
       totalBalance,
     };
 
-    updateFinancialData(user.id, updatedFinancial);
+    await updateFinancialData(user.id, updatedFinancial);
 
     return NextResponse.json({ message: "Account deleted" });
   } catch (error) {

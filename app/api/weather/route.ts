@@ -9,7 +9,7 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userData = getUserData(user.id);
+  const userData = await getUserData(user.id);
 
   if (!userData) {
     return NextResponse.json({ needsSetup: true }, { status: 200 });

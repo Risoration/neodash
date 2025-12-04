@@ -73,7 +73,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const data = getUserData(user.id);
+  const data = await getUserData(user.id);
   return NextResponse.json({
     cryptoComplete: Boolean(data?.crypto),
     weatherComplete: Boolean(data?.weather),
@@ -102,7 +102,7 @@ export async function POST(request: Request) {
 
     if (body.weather) {
       // Get user's temperature preference, default to fahrenheit
-      const userConfig = getUserConfig(user.id);
+      const userConfig = await getUserConfig(user.id);
       const temperatureUnit =
         userConfig?.preferences?.temperatureUnit || 'fahrenheit';
 

@@ -36,13 +36,24 @@ A high-fidelity, mobile-first personal analytics dashboard built with Next.js, T
 npm install
 ```
 
-2. Set up environment variables:
+2. Set up Supabase:
+
+   - Create a free account at [supabase.com](https://supabase.com)
+   - Create a new project
+   - Go to Project Settings → API
+   - Copy your Project URL and anon/public key
+
+3. Set up environment variables:
 
 Create a `.env.local` file in the root directory:
 
 ```env
 NEXTAUTH_URL=http://localhost:3000
 NEXTAUTH_SECRET=your-secret-key-here
+
+# Supabase Configuration (Required)
+NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 
 # Optional: Google Maps API key for location autocomplete
 # Get one at: https://console.cloud.google.com/google/maps-apis
@@ -54,6 +65,12 @@ Generate a secret key:
 openssl rand -base64 32
 ```
 
+4. Set up the database:
+
+   - In your Supabase project, go to SQL Editor
+   - Run the migration file: `supabase/migrations/001_initial_schema.sql`
+   - This will create all necessary tables (users, user_data, user_config, focus_sessions)
+
 **Note:** The Google Maps API key is optional. If not provided, location input will use browser geolocation and a basic text input. For full autocomplete functionality, get a free API key from [Google Cloud Console](https://console.cloud.google.com/google/maps-apis).
 
 3. Run the development server:
@@ -62,9 +79,9 @@ openssl rand -base64 32
 npm run dev
 ```
 
-4. Open [http://localhost:3000](http://localhost:3000) in your browser.
+6. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-5. Create an account:
+7. Create an account:
    - Click "Get Started" or navigate to `/signup`
    - Fill in your name, email, and password
    - Complete the onboarding wizard at `/onboarding` to connect your portfolio, weather location, and productivity stats

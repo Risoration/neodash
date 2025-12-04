@@ -18,7 +18,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const session = getActiveFocusSession(user.id);
+  const session = await getActiveFocusSession(user.id);
   if (!session) {
     return NextResponse.json({ session: null });
   }
@@ -65,21 +65,21 @@ export async function POST(request: Request) {
     const { action } = body;
 
     if (action === 'start') {
-      const session = createFocusSession(user.id);
-      syncFocusSessionToProductivity(user.id);
+      const session = await createFocusSession(user.id);
+      await syncFocusSessionToProductivity(user.id);
       return NextResponse.json({ session });
     }
 
     if (action === 'end') {
-      const activeSession = getActiveFocusSession(user.id);
+      const activeSession = await getActiveFocusSession(user.id);
       if (!activeSession) {
         return NextResponse.json(
           { error: 'No active session' },
           { status: 400 }
         );
       }
-      const endedSession = endFocusSession(activeSession.id);
-      syncFocusSessionToProductivity(user.id);
+      const endedSession = await endFocusSession(activeSession.id);
+      await syncFocusSessionToProductivity(user.id);
       return NextResponse.json({ session: endedSession });
     }
 
@@ -92,7 +92,7 @@ export async function POST(request: Request) {
         );
       }
 
-      const activeSession = getActiveFocusSession(user.id);
+      const activeSession = await getActiveFocusSession(user.id);
       if (!activeSession || activeSession.status !== 'active') {
         return NextResponse.json(
           { error: 'No active focus session' },
@@ -108,7 +108,7 @@ export async function POST(request: Request) {
 
       // Current focus time = total elapsed - break time
       const currentFocusTime = Math.max(0, totalElapsed - breakTime);
-      const updatedSession = updateFocusSession(activeSession.id, {
+      const updatedSession = await updateFocusSession(activeSession.id, {
         totalFocusSeconds: currentFocusTime,
         lastUpdatedAt: new Date().toISOString(),
       });
@@ -120,19 +120,22 @@ export async function POST(request: Request) {
         );
       }
 
-      const breakSession = startBreak(updatedSession.id, breakDurationMinutes);
-      syncFocusSessionToProductivity(user.id);
+      const breakSession = await startBreak(
+        updatedSession.id,
+        breakDurationMinutes
+      );
+      await syncFocusSessionToProductivity(user.id);
       return NextResponse.json({ session: breakSession });
     }
 
     if (action === 'resume') {
-      const activeSession = getActiveFocusSession(user.id);
+      const activeSession = await getActiveFocusSession(user.id);
       if (!activeSession || activeSession.status !== 'on_break') {
         return NextResponse.json({ error: 'No active break' }, { status: 400 });
       }
 
-      const resumedSession = resumeFocus(activeSession.id);
-      syncFocusSessionToProductivity(user.id);
+      const resumedSession = await resumeFocus(activeSession.id);
+      await syncFocusSessionToProductivity(user.id);
       return NextResponse.json({ session: resumedSession });
     }
 
@@ -157,7 +160,7 @@ export async function PUT(request: Request) {
     }
 
     // Find user by extension API key
-    const configs = readUserConfigs();
+    const configs = await readUserConfigs();
     const userId = Object.keys(configs).find(
       (id) => configs[id]?.preferences?.extensionApiKey === apiKey
     );
@@ -166,8 +169,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: 'Invalid API key' }, { status: 401 });
     }
 
-    const session = getActiveFocusSession(userId);
-    const config = getUserConfig(userId);
+    const session = await getActiveFocusSession(userId);
+    const config = await getUserConfig(userId);
     const blockedSites = config?.preferences?.blockedSites || [];
 
     // Calculate current focus time if active
