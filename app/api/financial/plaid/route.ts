@@ -1,34 +1,46 @@
-import { NextResponse } from "next/server";
-import { getCurrentUser } from "@/lib/auth";
-import { createLinkToken, exchangePublicToken, getAccounts, getTransactions } from "@/lib/plaid";
-import { getUserData, updateFinancialData, FinancialAccount, FinancialData } from "@/lib/db";
+import { NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import {
+  createLinkToken,
+  exchangePublicToken,
+  getAccounts,
+  getTransactions,
+} from '@/lib/plaid';
+import {
+  getUserData,
+  updateFinancialData,
+  FinancialAccount,
+  FinancialData,
+} from '@/lib/db';
 
 export async function POST(request: Request) {
   const user = await getCurrentUser();
   if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
     const body = await request.json();
     const { action } = body;
 
-    if (action === "create_link_token") {
+    if (action === 'create_link_token') {
       const linkToken = await createLinkToken(user.id);
       if (!linkToken) {
         return NextResponse.json(
-          { error: "Failed to create link token. Plaid may not be configured." },
+          {
+            error: 'Failed to create link token. Plaid may not be configured.',
+          },
           { status: 500 }
         );
       }
       return NextResponse.json({ link_token: linkToken });
     }
 
-    if (action === "exchange_token") {
+    if (action === 'exchange_token') {
       const { public_token } = body;
       if (!public_token) {
         return NextResponse.json(
-          { error: "Public token required" },
+          { error: 'Public token required' },
           { status: 400 }
         );
       }
@@ -36,7 +48,7 @@ export async function POST(request: Request) {
       const result = await exchangePublicToken(public_token);
       if (!result) {
         return NextResponse.json(
-          { error: "Failed to exchange token" },
+          { error: 'Failed to exchange token' },
           { status: 500 }
         );
       }
@@ -51,11 +63,11 @@ export async function POST(request: Request) {
       });
     }
 
-    if (action === "sync") {
+    if (action === 'sync') {
       const { access_token } = body;
       if (!access_token) {
         return NextResponse.json(
-          { error: "Access token required" },
+          { error: 'Access token required' },
           { status: 400 }
         );
       }
@@ -64,16 +76,16 @@ export async function POST(request: Request) {
       const plaidAccounts = await getAccounts(access_token);
       if (!plaidAccounts) {
         return NextResponse.json(
-          { error: "Failed to fetch accounts" },
+          { error: 'Failed to fetch accounts' },
           { status: 500 }
         );
       }
 
       // Fetch transactions (last 30 days)
-      const endDate = new Date().toISOString().split("T")[0];
+      const endDate = new Date().toISOString().split('T')[0];
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - 30);
-      const startDateStr = startDate.toISOString().split("T")[0];
+      const startDateStr = startDate.toISOString().split('T')[0];
 
       const plaidTransactions = await getTransactions(
         access_token,
@@ -102,14 +114,16 @@ export async function POST(request: Request) {
         );
 
         return {
-          id: existingAccount?.id || `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+          id:
+            existingAccount?.id ||
+            `acc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
           name: acc.name,
           type: mapPlaidType(acc.type),
           institution: acc.institution_id || undefined,
           balance: acc.balances.current || 0,
-          currency: acc.balances.iso_currency_code || "USD",
+          currency: acc.balances.iso_currency_code || 'USD',
           lastSynced: new Date().toISOString(),
-          linkedVia: "plaid",
+          linkedVia: 'plaid',
           plaidAccountId: acc.account_id,
         };
       });
@@ -117,31 +131,41 @@ export async function POST(request: Request) {
       // Map Plaid transactions to our format
       const transactions = (plaidTransactions || []).map((tx: any) => ({
         id: tx.transaction_id,
-        accountId: accounts.find((a) => a.plaidAccountId === tx.account_id)?.id || "",
+        accountId:
+          accounts.find((a) => a.plaidAccountId === tx.account_id)?.id || '',
         date: tx.date,
         amount: Math.abs(tx.amount),
-        category: tx.category?.[0] || "Uncategorized",
+        category: tx.category?.[0] || 'Uncategorized',
         description: tx.name,
-        type: tx.amount > 0 ? "expense" : "income",
+        type: tx.amount > 0 ? 'expense' : 'income',
       }));
 
       // Calculate totals
       const totalBalance = accounts.reduce((sum, acc) => sum + acc.balance, 0);
       const totalIncome = transactions
-        .filter((tx) => tx.type === "income")
-        .reduce((sum, tx) => sum + tx.amount, 0);
+        .filter((tx: { type: string; amount: number }) => tx.type === 'income')
+        .reduce((sum: number, tx: { amount: number }) => sum + tx.amount, 0);
       const totalExpenses = transactions
-        .filter((tx) => tx.type === "expense")
-        .reduce((sum, tx) => sum + tx.amount, 0);
+        .filter((tx: { type: string; amount: number }) => tx.type === 'expense')
+        .reduce((sum: number, tx: { amount: number }) => sum + tx.amount, 0);
 
       // Calculate spending by category
       const spendingByCategory = transactions
-        .filter((tx) => tx.type === "expense")
-        .reduce((acc: Record<string, number>, tx) => {
-          const category = tx.category || "Uncategorized";
-          acc[category] = (acc[category] || 0) + tx.amount;
-          return acc;
-        }, {});
+        .filter(
+          (tx: { type: string; category?: string; amount: number }) =>
+            tx.type === 'expense'
+        )
+        .reduce(
+          (
+            acc: Record<string, number>,
+            tx: { category?: string; amount: number }
+          ) => {
+            const category = tx.category || 'Uncategorized';
+            acc[category] = (acc[category] || 0) + tx.amount;
+            return acc;
+          },
+          {}
+        );
 
       const spendingByCategoryArray = Object.entries(spendingByCategory).map(
         ([category, amount]) => ({
@@ -170,32 +194,32 @@ export async function POST(request: Request) {
 
       updateFinancialData(user.id, updatedFinancial);
 
-      return NextResponse.json({ message: "Accounts synced successfully" });
+      return NextResponse.json({ message: 'Accounts synced successfully' });
     }
 
-    return NextResponse.json({ error: "Invalid action" }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
   } catch (error) {
-    console.error("Plaid API error", error);
+    console.error('Plaid API error', error);
     return NextResponse.json(
-      { error: "Failed to process Plaid request" },
+      { error: 'Failed to process Plaid request' },
       { status: 500 }
     );
   }
 }
 
-function mapPlaidType(plaidType: string): FinancialAccount["type"] {
-  const typeMap: Record<string, FinancialAccount["type"]> = {
-    depository: "checking",
-    credit: "credit_card",
-    investment: "investment",
+function mapPlaidType(plaidType: string): FinancialAccount['type'] {
+  const typeMap: Record<string, FinancialAccount['type']> = {
+    depository: 'checking',
+    credit: 'credit_card',
+    investment: 'investment',
   };
 
-  if (plaidType === "depository") {
+  if (plaidType === 'depository') {
     // Plaid doesn't distinguish checking vs savings, default to checking
-    return "checking";
+    return 'checking';
   }
 
-  return typeMap[plaidType] || "checking";
+  return typeMap[plaidType] || 'checking';
 }
 
 function generateBalanceHistory(
@@ -209,7 +233,7 @@ function generateBalanceHistory(
     if (!transactionsByDate[date]) {
       transactionsByDate[date] = 0;
     }
-    transactionsByDate[date] += tx.type === "income" ? tx.amount : -tx.amount;
+    transactionsByDate[date] += tx.type === 'income' ? tx.amount : -tx.amount;
   });
 
   // Generate 30-day history
@@ -219,7 +243,7 @@ function generateBalanceHistory(
   for (let i = 29; i >= 0; i--) {
     const date = new Date();
     date.setDate(date.getDate() - i);
-    const dateStr = date.toISOString().split("T")[0];
+    const dateStr = date.toISOString().split('T')[0];
 
     // Subtract transactions that happened after this date
     Object.entries(transactionsByDate).forEach(([txDate, amount]) => {
@@ -248,7 +272,7 @@ function calculateMonthlyTrends(
       monthlyData[month] = { income: 0, expenses: 0 };
     }
 
-    if (tx.type === "income") {
+    if (tx.type === 'income') {
       monthlyData[month].income += tx.amount;
     } else {
       monthlyData[month].expenses += tx.amount;
@@ -264,4 +288,3 @@ function calculateMonthlyTrends(
     .sort((a, b) => a.month.localeCompare(b.month))
     .slice(-6); // Last 6 months
 }
-
