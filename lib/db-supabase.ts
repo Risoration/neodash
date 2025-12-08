@@ -108,6 +108,11 @@ export interface FinancialData {
   balanceHistory: Array<{ date: string; balance: number }>;
   spendingByCategory: Array<{ category: string; amount: number }>;
   monthlyTrends: Array<{ month: string; income: number; expenses: number }>;
+  // Budget and goal tracking
+  budgets?: Array<{ category: string; monthlyBudget: number }>;
+  dailyGoal?: number;
+  monthlyGoal?: number;
+  lastUpdated?: string; // Last time manual accounts were updated
 }
 
 export interface UserData {

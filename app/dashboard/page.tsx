@@ -25,6 +25,7 @@ import { MetricRow } from '@/components/metric-row';
 import { Sidebar } from '@/components/sidebar';
 import { MobileNav } from '@/components/mobile-nav';
 import { EmptyState } from '@/components/empty-state';
+import { ManualAccountNotification } from '@/components/manual-account-notification';
 import {
   Cloud,
   TrendingUp,
@@ -315,6 +316,14 @@ export default function DashboardPage() {
               Your personal analytics at a glance
             </p>
           </motion.div>
+
+          {/* Manual Account Notification */}
+          {financialStatus === 'ready' && financialData?.accounts && (
+            <ManualAccountNotification
+              accounts={financialData.accounts}
+              lastUpdated={financialData.lastUpdated}
+            />
+          )}
 
           {/* Stats Grid */}
           <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8'>

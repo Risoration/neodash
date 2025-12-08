@@ -27,6 +27,7 @@ A high-fidelity, mobile-first personal analytics dashboard built with Next.js, T
 - **Icons**: Lucide React
 - **Authentication**: NextAuth.js
 - **Password Hashing**: bcryptjs
+- **Email Service**: Resend (for password reset emails)
 
 ## Getting Started
 
@@ -43,7 +44,23 @@ npm install
    - Go to Project Settings → API
    - Copy your Project URL and anon/public key
 
-3. Set up environment variables:
+3. Set up Resend (for password reset emails):
+
+   - Create a free account at [resend.com](https://resend.com) (free tier: 3,000 emails/month)
+   - Go to API Keys section in the dashboard
+   - Create a new API key
+   - Copy the API key (you'll add it to your `.env.local` file)
+   
+   **For Development:**
+   - You can use the default test domain `onboarding@resend.dev` (no setup required)
+   - Just add your `RESEND_API_KEY` to the environment variables
+   
+   **For Production:**
+   - Verify your domain in the Resend dashboard (Settings → Domains)
+   - Add DNS records as instructed by Resend
+   - Update `EMAIL_FROM` to use your verified domain (e.g., `noreply@yourdomain.com`)
+
+4. Set up environment variables:
 
 Create a `.env.local` file in the root directory:
 
@@ -55,6 +72,13 @@ NEXTAUTH_SECRET=your-secret-key-here
 NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 
+# Resend Email Service (Required for password reset)
+# Get your API key from https://resend.com/api-keys
+RESEND_API_KEY=re_your_api_key_here
+# For development, use: onboarding@resend.dev
+# For production, use your verified domain: noreply@yourdomain.com
+EMAIL_FROM=onboarding@resend.dev
+
 # Optional: Google Maps API key for location autocomplete
 # Get one at: https://console.cloud.google.com/google/maps-apis
 NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your-google-maps-api-key
@@ -65,23 +89,26 @@ Generate a secret key:
 openssl rand -base64 32
 ```
 
-4. Set up the database:
+5. Set up the database:
 
    - In your Supabase project, go to SQL Editor
-   - Run the migration file: `supabase/migrations/001_initial_schema.sql`
-   - This will create all necessary tables (users, user_data, user_config, focus_sessions)
+   - Run the migration files in order:
+     - `supabase/migrations/001_initial_schema.sql` - Creates users, user_data, user_config, focus_sessions tables
+     - `supabase/migrations/002_password_reset.sql` - Creates password_reset_tokens table for forgot password functionality
 
 **Note:** The Google Maps API key is optional. If not provided, location input will use browser geolocation and a basic text input. For full autocomplete functionality, get a free API key from [Google Cloud Console](https://console.cloud.google.com/google/maps-apis).
 
-3. Run the development server:
+**Note:** If `RESEND_API_KEY` is not set, password reset emails will be logged to the console in development mode. This is useful for testing without configuring email service.
+
+6. Run the development server:
 
 ```bash
 npm run dev
 ```
 
-6. Open [http://localhost:3000](http://localhost:3000) in your browser.
+7. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-7. Create an account:
+8. Create an account:
    - Click "Get Started" or navigate to `/signup`
    - Fill in your name, email, and password
    - Complete the onboarding wizard at `/onboarding` to connect your portfolio, weather location, and productivity stats

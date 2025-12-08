@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
 import { supabase } from './supabase';
 
 // Re-export all interfaces from the original db.ts
@@ -108,7 +109,26 @@ export interface FinancialData {
   balanceHistory: Array<{ date: string; balance: number }>;
   spendingByCategory: Array<{ category: string; amount: number }>;
   monthlyTrends: Array<{ month: string; income: number; expenses: number }>;
+  // Budget and goal tracking
+  budgets?: Array<{ category: string; monthlyBudget: number }>;
+  dailyGoal?: number;
+  monthlyGoal?: number;
+  lastUpdated?: string; // Last time manual accounts were updated
 }
+
+// Standard spending categories
+export const SPENDING_CATEGORIES = [
+  'essentials',
+  'food',
+  'entertainment',
+  'transportation',
+  'utilities',
+  'healthcare',
+  'shopping',
+  'other',
+] as const;
+
+export type SpendingCategory = typeof SPENDING_CATEGORIES[number];
 
 export interface UserData {
   userId: string;
@@ -311,6 +331,75 @@ export async function getUserByEmail(email: string): Promise<User | null> {
     name: user.name,
     createdAt: user.created_at,
   };
+}
+
+// Password reset functions
+export async function createPasswordResetToken(userId: string): Promise<string> {
+  // Generate a secure random token
+  const token = randomUUID() + '-' + randomUUID();
+  
+  // Token expires in 1 hour
+  const expiresAt = new Date();
+  expiresAt.setHours(expiresAt.getHours() + 1);
+
+  const { error } = await supabase
+    .from('password_reset_tokens')
+    .insert({
+      user_id: userId,
+      token,
+      expires_at: expiresAt.toISOString(),
+      used: false,
+    });
+
+  if (error) {
+    throw new Error(`Failed to create reset token: ${error.message}`);
+  }
+
+  return token;
+}
+
+export async function verifyPasswordResetToken(token: string): Promise<{ userId: string } | null> {
+  const { data, error } = await supabase
+    .from('password_reset_tokens')
+    .select('user_id, expires_at, used')
+    .eq('token', token)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  // Check if token is expired or already used
+  const expiresAt = new Date(data.expires_at);
+  if (expiresAt < new Date() || data.used) {
+    return null;
+  }
+
+  return { userId: data.user_id };
+}
+
+export async function markTokenAsUsed(token: string): Promise<void> {
+  const { error } = await supabase
+    .from('password_reset_tokens')
+    .update({ used: true })
+    .eq('token', token);
+
+  if (error) {
+    throw new Error(`Failed to mark token as used: ${error.message}`);
+  }
+}
+
+export async function updateUserPassword(userId: string, newPassword: string): Promise<void> {
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  const { error } = await supabase
+    .from('users')
+    .update({ password: hashedPassword })
+    .eq('id', userId);
+
+  if (error) {
+    throw new Error(`Failed to update password: ${error.message}`);
+  }
 }
 
 // User Data functions

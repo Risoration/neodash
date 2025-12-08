@@ -38,6 +38,8 @@ import { useSearchParams } from 'next/navigation';
 import { PlaidLinkButton } from '@/components/plaid-link-button';
 import { formatCurrency } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { SPENDING_CATEGORIES, type SpendingCategory } from '@/lib/db';
+import { DollarSign, Target } from 'lucide-react';
 
 function SettingsContent() {
   const { data: session } = useSession();
@@ -69,6 +71,17 @@ function SettingsContent() {
   const searchParams = useSearchParams();
   const [highlightFocusCard, setHighlightFocusCard] = useState(false);
   const focusCardRef = useRef<HTMLDivElement | null>(null);
+  const [budgetData, setBudgetData] = useState<any>(null);
+  const [savingBudget, setSavingBudget] = useState(false);
+  const [budgetForm, setBudgetForm] = useState<{
+    budgets: Record<string, number>;
+    dailyGoal: number;
+    monthlyGoal: number;
+  }>({
+    budgets: {},
+    dailyGoal: 0,
+    monthlyGoal: 0,
+  });
 
   useEffect(() => {
     async function fetchUserData() {
@@ -127,11 +140,35 @@ function SettingsContent() {
         setLoadingAccounts(false);
       }
     }
+    async function fetchBudgetData() {
+      try {
+        const response = await fetch('/api/financial/budget');
+        if (response.ok) {
+          const data = await response.json();
+          setBudgetData(data);
+          // Initialize form with existing data
+          const budgetsObj: Record<string, number> = {};
+          if (data.budgets) {
+            data.budgets.forEach((b: any) => {
+              budgetsObj[b.category] = b.monthlyBudget;
+            });
+          }
+          setBudgetForm({
+            budgets: budgetsObj,
+            dailyGoal: data.dailyGoal || 0,
+            monthlyGoal: data.monthlyGoal || 0,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching budget data:', error);
+      }
+    }
     if (session) {
       fetchUserData();
       fetchPreferences();
       fetchFinancialAccounts();
       fetchExtensionStatus();
+      fetchBudgetData();
     }
   }, [session]);
 
@@ -754,6 +791,203 @@ function SettingsContent() {
                       ))}
                     </div>
                   )}
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* Budget Management Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4 }}
+              className='md:col-span-2'
+            >
+              <Card className='glass-card border-0'>
+                <CardHeader>
+                  <div className='flex items-center gap-2'>
+                    <Target className='w-5 h-5' />
+                    <CardTitle>Budget & Goals</CardTitle>
+                  </div>
+                  <CardDescription>
+                    Set monthly budgets by category and daily/monthly spending goals
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className='space-y-6'>
+                    {/* Monthly Budgets by Category */}
+                    <div>
+                      <Label className='text-base font-semibold mb-4 block'>
+                        Monthly Budgets by Category
+                      </Label>
+                      <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                        {SPENDING_CATEGORIES.map((category) => (
+                          <div key={category} className='space-y-2'>
+                            <Label className='capitalize'>
+                              {category === 'essentials'
+                                ? 'Essentials'
+                                : category.charAt(0).toUpperCase() +
+                                  category.slice(1)}
+                            </Label>
+                            <Input
+                              type='number'
+                              step='0.01'
+                              placeholder='0.00'
+                              value={
+                                budgetForm.budgets[category] || ''
+                              }
+                              onChange={(e) =>
+                                setBudgetForm({
+                                  ...budgetForm,
+                                  budgets: {
+                                    ...budgetForm.budgets,
+                                    [category]: e.target.value
+                                      ? parseFloat(e.target.value)
+                                      : 0,
+                                  },
+                                })
+                              }
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Daily and Monthly Goals */}
+                    <div className='grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t'>
+                      <div className='space-y-2'>
+                        <Label>Daily Spending Goal</Label>
+                        <Input
+                          type='number'
+                          step='0.01'
+                          placeholder='0.00'
+                          value={budgetForm.dailyGoal || ''}
+                          onChange={(e) =>
+                            setBudgetForm({
+                              ...budgetForm,
+                              dailyGoal: e.target.value
+                                ? parseFloat(e.target.value)
+                                : 0,
+                            })
+                          }
+                        />
+                        <p className='text-xs text-muted-foreground'>
+                          Target spending per day
+                        </p>
+                      </div>
+                      <div className='space-y-2'>
+                        <Label>Monthly Spending Goal</Label>
+                        <Input
+                          type='number'
+                          step='0.01'
+                          placeholder='0.00'
+                          value={budgetForm.monthlyGoal || ''}
+                          onChange={(e) =>
+                            setBudgetForm({
+                              ...budgetForm,
+                              monthlyGoal: e.target.value
+                                ? parseFloat(e.target.value)
+                                : 0,
+                            })
+                          }
+                        />
+                        <p className='text-xs text-muted-foreground'>
+                          Target spending per month
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Current Month Summary */}
+                    {budgetData && (
+                      <div className='pt-4 border-t'>
+                        <Label className='text-base font-semibold mb-4 block'>
+                          Current Month Summary
+                        </Label>
+                        <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
+                          <div className='p-3 rounded-lg bg-muted/50'>
+                            <div className='text-sm text-muted-foreground'>
+                              Today's Spending
+                            </div>
+                            <div className='text-2xl font-bold'>
+                              {formatCurrency(budgetData.todaySpending || 0)}
+                            </div>
+                            {budgetData.dailyGoal > 0 && (
+                              <div className='text-xs text-muted-foreground mt-1'>
+                                Goal: {formatCurrency(budgetData.dailyGoal)}
+                              </div>
+                            )}
+                          </div>
+                          <div className='p-3 rounded-lg bg-muted/50'>
+                            <div className='text-sm text-muted-foreground'>
+                              Monthly Spending
+                            </div>
+                            <div className='text-2xl font-bold'>
+                              {formatCurrency(budgetData.monthlySpending || 0)}
+                            </div>
+                            {budgetData.monthlyGoal > 0 && (
+                              <div className='text-xs text-muted-foreground mt-1'>
+                                Goal: {formatCurrency(budgetData.monthlyGoal)}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Save Button */}
+                    <Button
+                      onClick={async () => {
+                        setSavingBudget(true);
+                        try {
+                          const budgetsArray = Object.entries(
+                            budgetForm.budgets
+                          )
+                            .filter(([_, amount]) => amount > 0)
+                            .map(([category, monthlyBudget]) => ({
+                              category,
+                              monthlyBudget,
+                            }));
+
+                          const response = await fetch('/api/financial/budget', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              budgets: budgetsArray,
+                              dailyGoal: budgetForm.dailyGoal,
+                              monthlyGoal: budgetForm.monthlyGoal,
+                            }),
+                          });
+
+                          if (!response.ok) {
+                            const error = await response.json();
+                            alert(error.error || 'Failed to save budget');
+                            return;
+                          }
+
+                          await fetchBudgetData();
+                          alert('Budget saved successfully!');
+                        } catch (error) {
+                          console.error('Error saving budget:', error);
+                          alert('Failed to save budget');
+                        } finally {
+                          setSavingBudget(false);
+                        }
+                      }}
+                      disabled={savingBudget}
+                      className='w-full'
+                    >
+                      {savingBudget ? (
+                        <>
+                          <RefreshCw className='w-4 h-4 mr-2 animate-spin' />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <DollarSign className='w-4 h-4 mr-2' />
+                          Save Budget
+                        </>
+                      )}
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>

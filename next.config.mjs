@@ -5,6 +5,8 @@ const nextConfig = {
     config.ignoreWarnings = [{ module: /plaid/ }];
     return config;
   },
+  // Turbopack configuration (empty for now, webpack config above handles plaid warnings)
+  turbopack: {},
 };
 
 export default nextConfig;

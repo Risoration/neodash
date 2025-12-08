@@ -4,7 +4,9 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2 } from "lucide-react";
+import { Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { SPENDING_CATEGORIES, type SpendingCategory } from "@/lib/db";
+import { formatCurrency } from "@/lib/utils";
 
 interface TransactionFormProps {
   accountId: string;
@@ -27,13 +29,47 @@ export function TransactionForm({
   initialData,
 }: TransactionFormProps) {
   const [loading, setLoading] = useState(false);
+  const [budgetStatus, setBudgetStatus] = useState<any>(null);
   const [formData, setFormData] = useState({
     date: initialData?.date || new Date().toISOString().split("T")[0],
     amount: initialData?.amount?.toString() || "",
-    category: initialData?.category || "",
+    category: initialData?.category || "other",
     description: initialData?.description || "",
     type: initialData?.type || "expense",
   });
+
+  const CATEGORY_LABELS: Record<string, string> = {
+    essentials: "Essentials",
+    food: "Food",
+    entertainment: "Entertainment",
+    transportation: "Transportation",
+    utilities: "Utilities",
+    healthcare: "Healthcare",
+    shopping: "Shopping",
+    other: "Other",
+  };
+
+  useEffect(() => {
+    // Fetch budget status when category changes
+    if (formData.category && formData.type === "expense") {
+      fetchBudgetStatus();
+    }
+  }, [formData.category, formData.type]);
+
+  const fetchBudgetStatus = async () => {
+    try {
+      const response = await fetch("/api/financial/budget");
+      if (response.ok) {
+        const data = await response.json();
+        const categoryBudget = data.budgetStatus?.find(
+          (b: any) => b.category === formData.category
+        );
+        setBudgetStatus(categoryBudget);
+      }
+    } catch (error) {
+      console.error("Error fetching budget status:", error);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -128,14 +164,61 @@ export function TransactionForm({
       </div>
 
       <div>
-        <Label>Category (Optional)</Label>
-        <Input
+        <Label>Category</Label>
+        <select
+          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
           value={formData.category}
           onChange={(e) =>
             setFormData({ ...formData, category: e.target.value })
           }
-          placeholder="e.g., Food, Rent, Salary"
-        />
+        >
+          {SPENDING_CATEGORIES.map((cat) => (
+            <option key={cat} value={cat}>
+              {CATEGORY_LABELS[cat] || cat}
+            </option>
+          ))}
+        </select>
+        {formData.type === "expense" && budgetStatus && (
+          <div className="mt-2 p-2 rounded-lg bg-muted/50">
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted-foreground">
+                Budget: {formatCurrency(budgetStatus.monthlyBudget)}
+              </span>
+              <span className="text-muted-foreground">
+                Spent: {formatCurrency(budgetStatus.spent)}
+              </span>
+            </div>
+            <div className="w-full bg-muted rounded-full h-2 mt-2">
+              <div
+                className={`h-2 rounded-full ${
+                  budgetStatus.status === "over"
+                    ? "bg-red-500"
+                    : budgetStatus.status === "warning"
+                    ? "bg-yellow-500"
+                    : "bg-green-500"
+                }`}
+                style={{
+                  width: `${Math.min(budgetStatus.percentage, 100)}%`,
+                }}
+              />
+            </div>
+            {budgetStatus.remaining >= 0 ? (
+              <div className="flex items-center gap-1 mt-1 text-xs text-green-500">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>
+                  {formatCurrency(budgetStatus.remaining)} remaining
+                </span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 mt-1 text-xs text-red-500">
+                <AlertCircle className="w-3 h-3" />
+                <span>
+                  Over by {formatCurrency(Math.abs(budgetStatus.remaining))}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex gap-2">
