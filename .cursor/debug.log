@@ -9,3 +9,8 @@
 {"location":"lib/auth-config.ts:14","message":"authorize called","data":{"hasEmail":true,"hasPassword":true},"timestamp":1765567982727,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
 {"location":"lib/auth-config.ts:20","message":"verifyUser result","data":{"userFound":true,"userId":"7290fed2-e1d9-4cd0-aa15-73a67d15d706"},"timestamp":1765567983899,"sessionId":"debug-session","runId":"run1","hypothesisId":"D"}
 {"location":"app/login/page.tsx:33","message":"signIn result received","data":{"error":null,"ok":true},"timestamp":1765567983958,"sessionId":"debug-session","runId":"run1","hypothesisId":"C"}
+{"location":"lib/plaid.ts:12","message":"initPlaidClient entry","data":{"hasExistingClient":false,"env":"sandbox","clientIdLength":24,"secretLength":30},"timestamp":1765571006580,"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}
+{"location":"lib/plaid.ts:19","message":"plaid package loaded","data":{"hasPlaidEnvironments":true,"envPath":"https://sandbox.plaid.com"},"timestamp":1765571006597,"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}
+{"location":"lib/plaid.ts:29","message":"configuration created","data":{"basePath":"https://sandbox.plaid.com"},"timestamp":1765571006598,"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}
+{"location":"lib/plaid.ts:32","message":"PlaidApi created","data":{"hasClient":true},"timestamp":1765571006599,"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}
+{"location":"lib/plaid.ts:12","message":"initPlaidClient entry","data":{"hasExistingClient":true,"env":"sandbox","clientIdLength":24,"secretLength":30},"timestamp":1765571007302,"sessionId":"debug-session","runId":"run1","hypothesisId":"B"}

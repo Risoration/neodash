@@ -4,7 +4,22 @@ import { verifyUser } from '@/lib/db';
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
-  // logger: false, // Disable logger to prevent _log endpoint calls
+  // Custom logger that doesn't POST to _log endpoint
+  logger: {
+    error(code, metadata) {
+      // Only log to console, don't POST to _log
+      console.error(`[NextAuth Error] ${code}`, metadata);
+    },
+    warn(code) {
+      console.warn(`[NextAuth Warning] ${code}`);
+    },
+    debug(code, metadata) {
+      // No-op to prevent client-side POST requests
+      if (process.env.NODE_ENV === 'development') {
+        console.debug(`[NextAuth Debug] ${code}`, metadata);
+      }
+    },
+  },
   providers: [
     CredentialsProvider({
       name: 'Credentials',
