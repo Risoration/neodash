@@ -4,6 +4,7 @@ import { verifyUser } from '@/lib/db';
 
 export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
+  // logger: false, // Disable logger to prevent _log endpoint calls
   providers: [
     CredentialsProvider({
       name: 'Credentials',
