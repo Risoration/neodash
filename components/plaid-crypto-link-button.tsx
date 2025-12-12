@@ -2,26 +2,23 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, Link2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Loader2, Coins, CheckCircle2, AlertCircle } from 'lucide-react';
 
-interface PlaidLinkButtonProps {
+interface PlaidCryptoLinkButtonProps {
   onSuccess?: (itemId: string, institutionName?: string) => void;
   onExit?: () => void;
   onError?: (error: string) => void;
   className?: string;
-  autoSync?: boolean; // Automatically sync after linking
 }
 
-export function PlaidLinkButton({
+export function PlaidCryptoLinkButton({
   onSuccess,
   onExit,
   onError,
   className,
-  autoSync = true,
-}: PlaidLinkButtonProps) {
+}: PlaidCryptoLinkButtonProps) {
   const [loading, setLoading] = useState(false);
   const [exchanging, setExchanging] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [connected, setConnected] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,8 +40,9 @@ export function PlaidLinkButton({
   const handleClick = async () => {
     setLoading(true);
     setError(null);
+
     try {
-      // Get link token from API
+      // Get link token from API (for crypto exchanges)
       const response = await fetch('/api/financial/plaid', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -93,7 +91,7 @@ export function PlaidLinkButton({
                   .catch(() => ({}));
                 throw new Error(
                   errorData.error ||
-                    'Failed to connect your account. Please try again.'
+                    'Failed to connect your crypto exchange. Please try again.'
                 );
               }
 
@@ -101,32 +99,28 @@ export function PlaidLinkButton({
               const itemId = exchangeData.item_id;
               const institutionName = exchangeData.institution_name;
 
-              // Automatically sync accounts if enabled
-              if (autoSync && itemId) {
-                setSyncing(true);
-                try {
-                  const syncResponse = await fetch('/api/financial/plaid', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                      action: 'sync',
-                      item_id: itemId,
-                    }),
-                  });
+              // Sync crypto holdings
+              setExchanging(true);
+              try {
+                const syncResponse = await fetch('/api/crypto/plaid', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    action: 'sync',
+                    item_id: itemId,
+                  }),
+                });
 
-                  if (!syncResponse.ok) {
-                    const syncErrorData = await syncResponse
-                      .json()
-                      .catch(() => ({}));
-                    // Don't throw - account is linked, sync can be done later
-                    console.warn('Sync failed:', syncErrorData.error);
-                  }
-                } catch (syncError) {
-                  console.error('Sync error:', syncError);
-                  // Don't throw - account is linked
-                } finally {
-                  setSyncing(false);
+                if (!syncResponse.ok) {
+                  const syncErrorData = await syncResponse
+                    .json()
+                    .catch(() => ({}));
+                  console.warn('Crypto sync failed:', syncErrorData.error);
                 }
+              } catch (syncError) {
+                console.error('Crypto sync error:', syncError);
+              } finally {
+                setExchanging(false);
               }
 
               setConnected(true);
@@ -139,7 +133,7 @@ export function PlaidLinkButton({
               console.error('Token exchange error:', error);
               const errorMessage =
                 error.message ||
-                'Failed to connect your account. Please try again.';
+                'Failed to connect your crypto exchange. Please try again.';
               setError(errorMessage);
               setExchanging(false);
               if (onError) {
@@ -150,51 +144,15 @@ export function PlaidLinkButton({
             }
           },
           onExit: (err: any, metadata: any) => {
-            // #region agent log
-            fetch(
-              'http://127.0.0.1:7242/ingest/5ce623e7-82d8-49c9-abb4-9873ba0b4b5d',
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  location: 'components/plaid-link-button.tsx:176',
-                  message: 'Plaid Link onExit',
-                  data: {
-                    hasError: !!err,
-                    error: err
-                      ? {
-                          error_type: err.error_type,
-                          error_code: err.error_code,
-                          error_message: err.error_message,
-                          display_message: err.display_message,
-                          request_id: err.request_id,
-                        }
-                      : null,
-                    metadata: {
-                      institution_id: metadata?.institution_id,
-                      institution_name: metadata?.institution_name,
-                      status: metadata?.status,
-                    },
-                  },
-                  timestamp: Date.now(),
-                  sessionId: 'debug-session',
-                  runId: 'run2',
-                  hypothesisId: 'F',
-                }),
-              }
-            ).catch(() => {});
-            // #endregion
             setLoading(false);
             setExchanging(false);
-            setSyncing(false);
 
             if (err) {
-              // Handle institution authorization errors with helpful message
               let errorMessage: string;
               if (err.error_code === 'UNAUTHORIZED_INSTITUTION') {
                 const institutionName =
-                  err.institution_name || 'This institution';
-                errorMessage = `${institutionName} requires business registration in Plaid Dashboard. Try selecting a different bank (many regional banks don't require registration). You can enable ${institutionName} later in Plaid Dashboard → Team Settings → US OAuth Institutions.`;
+                  err.institution_name || 'This crypto exchange';
+                errorMessage = `${institutionName} requires business registration in Plaid Dashboard. Try selecting a different exchange (many exchanges don't require registration).`;
               } else {
                 errorMessage =
                   err.display_message ||
@@ -212,43 +170,12 @@ export function PlaidLinkButton({
             }
           },
           onEvent: (eventName: string, metadata: any) => {
-            // #region agent log
-            fetch(
-              'http://127.0.0.1:7242/ingest/5ce623e7-82d8-49c9-abb4-9873ba0b4b5d',
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  location: 'components/plaid-link-button.tsx:170',
-                  message: 'Plaid Link event',
-                  data: {
-                    eventName,
-                    metadata: {
-                      error_type: metadata?.error_type,
-                      error_code: metadata?.error_code,
-                      error_message: metadata?.error_message,
-                      institution_id: metadata?.institution_id,
-                      institution_name: metadata?.institution_name,
-                      view_name: metadata?.view_name,
-                      status: metadata?.status,
-                    },
-                  },
-                  timestamp: Date.now(),
-                  sessionId: 'debug-session',
-                  runId: 'run2',
-                  hypothesisId: 'F',
-                }),
-              }
-            ).catch(() => {});
-            // #endregion
-            console.log('Plaid event:', eventName, metadata);
-            // Handle specific events if needed
+            console.log('Plaid crypto event:', eventName, metadata);
             if (eventName === 'ERROR') {
-              // Handle institution authorization errors with helpful message
               if (metadata?.error_code === 'UNAUTHORIZED_INSTITUTION') {
                 const institutionName =
-                  metadata?.institution_name || 'This institution';
-                const errorMessage = `${institutionName} requires business registration in Plaid Dashboard. Try selecting a different bank (many regional banks don't require registration). You can enable ${institutionName} later in Plaid Dashboard → Team Settings → US OAuth Institutions.`;
+                  metadata?.institution_name || 'This crypto exchange';
+                const errorMessage = `${institutionName} requires business registration in Plaid Dashboard. Try selecting a different exchange.`;
                 setError(errorMessage);
               } else {
                 const errorMessage =
@@ -276,8 +203,6 @@ export function PlaidLinkButton({
       setLoading(false);
       if (onError) {
         onError(errorMessage);
-      } else {
-        alert(errorMessage);
       }
     }
   };
@@ -291,14 +216,12 @@ export function PlaidLinkButton({
     );
   }
 
-  const isLoading = loading || exchanging || syncing;
-  const statusText = syncing
-    ? 'Syncing...'
-    : exchanging
-      ? 'Connecting...'
-      : loading
-        ? 'Loading...'
-        : null;
+  const isLoading = loading || exchanging;
+  const statusText = exchanging
+    ? 'Connecting...'
+    : loading
+      ? 'Loading...'
+      : null;
 
   return (
     <div className='flex flex-col gap-2'>
@@ -315,8 +238,8 @@ export function PlaidLinkButton({
           </>
         ) : (
           <>
-            <Link2 className='w-4 h-4 mr-2' />
-            Link Account with Plaid
+            <Coins className='w-4 h-4 mr-2' />
+            Link Crypto Exchange with Plaid
           </>
         )}
       </Button>
@@ -345,3 +268,4 @@ declare global {
     };
   }
 }
+

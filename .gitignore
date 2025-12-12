@@ -25,8 +25,12 @@ yarn-debug.log*
 yarn-error.log*
 
 # local env files
+# .env.local and .env.*.local files should never be committed (contain secrets)
 .env*.local
 .env
+
+# .env.example is a template with placeholders - safe to commit
+# .env.local overrides .env and contains actual secrets
 
 # vercel
 .vercel

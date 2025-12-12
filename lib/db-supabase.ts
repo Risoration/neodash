@@ -61,21 +61,30 @@ export interface ProductivityData {
 
 export interface WeatherData {
   location: string;
-  temperature: number;
+  temperature: number; // Keep for backward compatibility, will be temperatureF
+  temperatureF?: number; // Fahrenheit temperature
+  temperatureC?: number; // Celsius temperature
   condition: string;
   humidity: number;
   windSpeed: number;
   forecast: Array<{
     day: string;
-    high: number;
-    low: number;
+    high: number; // Keep for backward compatibility
+    highF?: number; // Fahrenheit high
+    highC?: number; // Celsius high
+    low: number; // Keep for backward compatibility
+    lowF?: number; // Fahrenheit low
+    lowC?: number; // Celsius low
     condition: string;
   }>;
   hourly: Array<{
     hour: number;
-    temp: number;
+    temp: number; // Keep for backward compatibility
+    tempF?: number; // Fahrenheit temp
+    tempC?: number; // Celsius temp
     condition: string;
   }>;
+  unit?: 'fahrenheit' | 'celsius'; // Keep for backward compatibility
 }
 
 export interface FinancialAccount {

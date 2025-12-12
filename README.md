@@ -44,7 +44,17 @@ npm install
    - Go to Project Settings → API
    - Copy your Project URL and anon/public key
 
-3. Set up Resend (for password reset emails):
+3. Set up environment variables:
+
+   - Copy `.env.example` to `.env.local`:
+     ```bash
+     cp .env.example .env.local
+     ```
+   - Fill in your actual values in `.env.local` (this file is gitignored and contains your secrets)
+   - The `.env` file is a template with placeholders - safe to commit
+   - The `.env.local` file contains your actual secrets - never commit this!
+
+4. Set up Resend (for password reset emails):
 
    - Create a free account at [resend.com](https://resend.com) (free tier: 3,000 emails/month)
    - Go to API Keys section in the dashboard
@@ -62,22 +72,14 @@ npm install
 
 4. Set up environment variables:
 
-Create a `.env.local` file in the root directory:
+   - Copy `.env.example` to `.env.local`:
+     ```bash
+     cp .env.example .env.local
+     ```
+   - Fill in your actual values in `.env.local` (this file is gitignored and contains your secrets)
+   - See `.env.example` for all required environment variables and documentation
 
-```env
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=your-secret-key-here
-
-# Supabase Configuration (Required)
-NEXT_PUBLIC_SUPABASE_URL=your-supabase-project-url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
-
-# Resend Email Service (Required for password reset)
-# Get your API key from https://resend.com/api-keys
-RESEND_API_KEY=re_your_api_key_here
-# For development, use: onboarding@resend.dev
-# For production, use your verified domain: noreply@yourdomain.com
-EMAIL_FROM=onboarding@resend.dev
+   **Note:** The `.env` file is a template with placeholders - safe to commit. The `.env.local` file contains your actual secrets - never commit this!
 
 # Optional: Google Maps API key for location autocomplete
 # Get one at: https://console.cloud.google.com/google/maps-apis

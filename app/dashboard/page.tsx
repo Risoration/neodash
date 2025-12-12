@@ -20,6 +20,7 @@ import {
   Cell,
 } from 'recharts';
 import { StatCard } from '@/components/stat-card';
+import { TemperatureCard } from '@/components/temperature-card';
 import { ChartCard } from '@/components/chart-card';
 import { MetricRow } from '@/components/metric-row';
 import { Sidebar } from '@/components/sidebar';
@@ -46,6 +47,15 @@ import {
 import { Button } from '@/components/ui/button';
 import { formatCurrency, formatPercentage } from '@/lib/utils';
 import { Label } from '@/components/ui/label';
+import type {
+  WeatherData,
+  CryptoData,
+  ProductivityData,
+  FinancialData,
+  FocusSession,
+  PieChartData,
+  MonthlyTrend,
+} from '@/types';
 import {
   fetchSection,
   fetchFocusSession,
@@ -62,23 +72,39 @@ const COLORS = ['#a855f7', '#ec4899', '#3b82f6', '#10b981'];
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [weatherData, setWeatherData] = useState<any>(null);
-  const [cryptoData, setCryptoData] = useState<any>(null);
-  const [productivityData, setProductivityData] = useState<any>(null);
-  const [financialData, setFinancialData] = useState<any>(null);
+  const [weatherData, setWeatherData] = useState<WeatherData | null>(null);
+  const [cryptoData, setCryptoData] = useState<CryptoData | null>(null);
+  const [productivityData, setProductivityData] =
+    useState<ProductivityData | null>(null);
+  const [financialData, setFinancialData] = useState<FinancialData | null>(
+    null
+  );
   const [cryptoStatus, setCryptoStatus] = useState<SectionStatus>('loading');
   const [weatherStatus, setWeatherStatus] = useState<SectionStatus>('loading');
   const [productivityStatus, setProductivityStatus] =
     useState<SectionStatus>('loading');
   const [financialStatus, setFinancialStatus] =
     useState<SectionStatus>('loading');
-  const [focusSession, setFocusSession] = useState<any>(null);
+  const [focusSession, setFocusSession] = useState<FocusSession | null>(null);
   const [focusLoading, setFocusLoading] = useState(false);
   const [breakDuration, setBreakDuration] = useState(5);
   const [showBreakDialog, setShowBreakDialog] = useState(false);
   const [blockedSitesCount, setBlockedSitesCount] = useState(0);
   const [blockedSites, setBlockedSites] = useState<string[]>([]);
   const [showBlockedSitesList, setShowBlockedSitesList] = useState(false);
+  const [temperatureUnit, setTemperatureUnit] = useState<
+    'fahrenheit' | 'celsius'
+  >(() => {
+    // Initialize from localStorage if available
+    if (typeof window !== 'undefined') {
+      const savedUnit = localStorage.getItem('temperatureUnit') as
+        | 'fahrenheit'
+        | 'celsius'
+        | null;
+      return savedUnit || 'fahrenheit';
+    }
+    return 'fahrenheit';
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -106,7 +132,10 @@ export default function DashboardPage() {
         controller.signal
       );
       setWeatherStatus(weatherResult.status);
-      setWeatherData(weatherResult.data);
+      setWeatherData({
+        ...weatherResult.data,
+        unit: weatherResult.data?.unit ?? 'fahrenheit',
+      });
 
       const productivityResult = await fetchSection(
         '/api/productivity',
@@ -133,8 +162,30 @@ export default function DashboardPage() {
     loadFocusSession();
     loadBlockedSites();
 
+    // Load temperature unit from localStorage
+    const savedUnit = localStorage.getItem('temperatureUnit') as
+      | 'fahrenheit'
+      | 'celsius'
+      | null;
+    if (savedUnit) {
+      setTemperatureUnit(savedUnit);
+    }
+
+    // Listen for temperature unit changes from settings page
+    const handleTemperatureUnitChange = (event: CustomEvent) => {
+      setTemperatureUnit(event.detail);
+    };
+    window.addEventListener(
+      'temperatureUnitChanged',
+      handleTemperatureUnitChange as EventListener
+    );
+
     return () => {
       controller.abort();
+      window.removeEventListener(
+        'temperatureUnitChanged',
+        handleTemperatureUnitChange as EventListener
+      );
     };
   }, [router]);
 
@@ -193,7 +244,7 @@ export default function DashboardPage() {
   }, [focusSession?.status]);
 
   // Calculate real-time focus time client-side
-  const calculateCurrentFocusTime = (session: any): number => {
+  const calculateCurrentFocusTime = (session: FocusSession | null): number => {
     if (!session) return 0;
 
     if (session.status === 'active') {
@@ -211,7 +262,9 @@ export default function DashboardPage() {
   };
 
   // Calculate remaining break time client-side
-  const calculateRemainingBreakTime = (session: any): number => {
+  const calculateRemainingBreakTime = (
+    session: FocusSession | null
+  ): number => {
     if (!session || session.status !== 'on_break' || !session.breakEndsAt) {
       return 0;
     }
@@ -368,11 +421,9 @@ export default function DashboardPage() {
               />
             )}
             {weatherStatus === 'ready' ? (
-              <StatCard
-                title='Temperature'
-                value={`${weatherData?.temperature ?? '--'}°`}
-                icon={Cloud}
-                gradient='from-blue-500/20 to-cyan-500/20'
+              <TemperatureCard
+                weatherData={weatherData}
+                temperatureUnit={temperatureUnit}
                 delay={0.2}
               />
             ) : weatherStatus === 'loading' ? (
@@ -447,8 +498,8 @@ export default function DashboardPage() {
                       {focusSession?.status === 'active'
                         ? `Blocking ${blockedSitesCount} sites`
                         : focusSession?.status === 'on_break'
-                        ? 'On break'
-                        : 'Lock in and block distractions'}
+                          ? 'On break'
+                          : 'Lock in and block distractions'}
                     </p>
                   </div>
                 </div>
@@ -669,14 +720,19 @@ export default function DashboardPage() {
           {/* Charts Row */}
           <div className='grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8'>
             {financialStatus === 'ready' &&
-            financialData?.balanceHistory?.length > 0 ? (
+            financialData &&
+            financialData.balanceHistory &&
+            financialData.balanceHistory.length > 0 ? (
               <ChartCard
                 title='Balance Trend'
                 description='30-day balance history'
                 delay={0.5}
               >
-                <ResponsiveContainer width='100%' height={300}>
-                  <LineChart data={financialData.balanceHistory}>
+                <ResponsiveContainer
+                  width='100%'
+                  height={300}
+                >
+                  <LineChart data={financialData.balanceHistory || []}>
                     <CartesianGrid
                       strokeDasharray='3 3'
                       className='opacity-30'
@@ -722,7 +778,10 @@ export default function DashboardPage() {
                 description='Expense breakdown'
                 delay={0.6}
               >
-                <ResponsiveContainer width='100%' height={300}>
+                <ResponsiveContainer
+                  width='100%'
+                  height={300}
+                >
                   <PieChart>
                     <Pie
                       data={financialSpendingData}
@@ -736,14 +795,12 @@ export default function DashboardPage() {
                       fill='#8884d8'
                       dataKey='value'
                     >
-                      {financialSpendingData.map(
-                        (entry: any, index: number) => (
-                          <Cell
-                            key={`cell-${index}`}
-                            fill={COLORS[index % COLORS.length]}
-                          />
-                        )
-                      )}
+                      {financialSpendingData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={COLORS[index % COLORS.length]}
+                        />
+                      ))}
                     </Pie>
                     <Tooltip
                       contentStyle={{
@@ -763,13 +820,19 @@ export default function DashboardPage() {
                 description='Monthly comparison'
                 delay={0.6}
               >
-                <ResponsiveContainer width='100%' height={300}>
+                <ResponsiveContainer
+                  width='100%'
+                  height={300}
+                >
                   <BarChart data={financialMonthlyData}>
                     <CartesianGrid
                       strokeDasharray='3 3'
                       className='opacity-30'
                     />
-                    <XAxis dataKey='month' className='text-xs' />
+                    <XAxis
+                      dataKey='month'
+                      className='text-xs'
+                    />
                     <YAxis
                       tickFormatter={(value) =>
                         `$${(value / 1000).toFixed(0)}k`
@@ -784,8 +847,14 @@ export default function DashboardPage() {
                       }}
                       formatter={(value: number) => formatCurrency(value)}
                     />
-                    <Bar dataKey='income' fill='#10b981' />
-                    <Bar dataKey='expenses' fill='#ef4444' />
+                    <Bar
+                      dataKey='income'
+                      fill='#10b981'
+                    />
+                    <Bar
+                      dataKey='expenses'
+                      fill='#ef4444'
+                    />
                   </BarChart>
                 </ResponsiveContainer>
               </ChartCard>
@@ -797,7 +866,10 @@ export default function DashboardPage() {
                   description='30-day portfolio value trend'
                   delay={0.5}
                 >
-                  <ResponsiveContainer width='100%' height={300}>
+                  <ResponsiveContainer
+                    width='100%'
+                    height={300}
+                  >
                     <AreaChart data={cryptoData?.history || []}>
                       <defs>
                         <linearGradient
@@ -863,7 +935,10 @@ export default function DashboardPage() {
                   description='Current asset allocation'
                   delay={0.6}
                 >
-                  <ResponsiveContainer width='100%' height={300}>
+                  <ResponsiveContainer
+                    width='100%'
+                    height={300}
+                  >
                     <PieChart>
                       <Pie
                         data={cryptoPieData}
@@ -920,10 +995,19 @@ export default function DashboardPage() {
               delay={0.7}
               className='mb-8'
             >
-              <ResponsiveContainer width='100%' height={300}>
+              <ResponsiveContainer
+                width='100%'
+                height={300}
+              >
                 <BarChart data={productivityData?.weeklyStats || []}>
-                  <CartesianGrid strokeDasharray='3 3' className='opacity-30' />
-                  <XAxis dataKey='day' className='text-xs' />
+                  <CartesianGrid
+                    strokeDasharray='3 3'
+                    className='opacity-30'
+                  />
+                  <XAxis
+                    dataKey='day'
+                    className='text-xs'
+                  />
                   <YAxis className='text-xs' />
                   <Tooltip
                     contentStyle={{
@@ -932,8 +1016,16 @@ export default function DashboardPage() {
                       borderRadius: '8px',
                     }}
                   />
-                  <Bar dataKey='tasks' fill='#a855f7' radius={[8, 8, 0, 0]} />
-                  <Bar dataKey='hours' fill='#ec4899' radius={[8, 8, 0, 0]} />
+                  <Bar
+                    dataKey='tasks'
+                    fill='#a855f7'
+                    radius={[8, 8, 0, 0]}
+                  />
+                  <Bar
+                    dataKey='hours'
+                    fill='#ec4899'
+                    radius={[8, 8, 0, 0]}
+                  />
                 </BarChart>
               </ResponsiveContainer>
             </ChartCard>
@@ -955,14 +1047,14 @@ export default function DashboardPage() {
               <div className='glass-card'>
                 <h3 className='text-xl font-semibold mb-4'>Crypto Holdings</h3>
                 <div className='space-y-2'>
-                  {cryptoData?.coins.map((coin: any, index: number) => (
+                  {cryptoData?.coins.map((coin, index) => (
                     <MetricRow
                       key={coin.symbol}
                       label={`${coin.name} (${coin.symbol})`}
                       value={`${formatCurrency(coin.value)} (${formatPercentage(
-                        coin.change24h
+                        coin.change24h ?? 0
                       )})`}
-                      trend={coin.change24h >= 0 ? 'up' : 'down'}
+                      trend={(coin.change24h ?? 0) >= 0 ? 'up' : 'down'}
                       delay={0.8 + index * 0.1}
                     />
                   ))}

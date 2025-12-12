@@ -5,10 +5,27 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Loader2, MapPin } from 'lucide-react';
 import { Loader } from '@googlemaps/js-api-loader';
+import type {
+  GoogleMapsAutocomplete,
+  GoogleMapsPlacesService,
+  GoogleMapsAutocompletePrediction,
+  GoogleMapsPlaceDetails,
+  NominatimResponse,
+} from '@/types';
 
 declare global {
   interface Window {
-    google: any;
+    google: {
+      maps: {
+        places: {
+          Autocomplete: new (
+            input: HTMLInputElement,
+            options: { types: string[]; fields: string[] }
+          ) => GoogleMapsAutocomplete;
+          PlacesService: new (element: HTMLElement) => GoogleMapsPlacesService;
+        };
+      };
+    };
   }
 }
 
@@ -20,6 +37,7 @@ interface LocationInputProps {
   ) => void;
   label?: string;
   placeholder?: string;
+  onGeolocationTrigger?: (triggerFn: () => void) => void; // Callback to receive trigger function
 }
 
 export function LocationInput({
@@ -27,24 +45,59 @@ export function LocationInput({
   onChange,
   label = 'Location',
   placeholder = 'City, Country',
+  onGeolocationTrigger,
 }: LocationInputProps) {
-  const [geolocating, setGeolocating] = useState(true);
-  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [geolocating, setGeolocating] = useState(false);
+  const [suggestions, setSuggestions] = useState<
+    GoogleMapsAutocompletePrediction[]
+  >([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [geolocationTrigger, setGeolocationTrigger] = useState(0);
 
   const inputRef = useRef<HTMLInputElement>(null);
+  const onChangeRef = useRef(onChange);
+  const lastTriggerRef = useRef(0);
+  const isGeolocatingRef = useRef(false);
 
-  const autocompleteTokenRef = useRef<any>(null);
-  const placesClientRef = useRef<any>(null);
+  const autocompleteTokenRef = useRef<unknown>(null);
+  const placesClientRef = useRef<GoogleMapsPlacesService | null>(null);
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const autocompleteRef = useRef<any>(null);
+  const autocompleteRef = useRef<GoogleMapsAutocomplete | null>(null);
 
-  // --- 1. Try browser geolocation first ---
+  // Keep onChange ref up to date
   useEffect(() => {
-    if (!navigator.geolocation) {
-      setGeolocating(false);
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  // Function to trigger geolocation
+  const triggerGeolocation = useCallback(() => {
+    setGeolocationTrigger((prev) => prev + 1);
+  }, []);
+
+  // Expose trigger function to parent component
+  useEffect(() => {
+    if (onGeolocationTrigger) {
+      onGeolocationTrigger(triggerGeolocation);
+    }
+  }, [onGeolocationTrigger, triggerGeolocation]);
+
+  // --- 1. Handle geolocation when manually triggered ---
+  useEffect(() => {
+    if (!navigator.geolocation || geolocationTrigger === 0) {
       return;
     }
+
+    // Prevent duplicate triggers
+    if (
+      geolocationTrigger === lastTriggerRef.current ||
+      isGeolocatingRef.current
+    ) {
+      return;
+    }
+
+    lastTriggerRef.current = geolocationTrigger;
+    isGeolocatingRef.current = true;
+    setGeolocating(true);
 
     navigator.geolocation.getCurrentPosition(
       async (position) => {
@@ -67,17 +120,22 @@ export function LocationInput({
               data.address.country ?? ''
             }`.trim();
 
-            onChange(fullLocation, { latitude, longitude });
+            onChangeRef.current(fullLocation, { latitude, longitude });
           }
         } catch (error) {
           console.error('Reverse geocoding error:', error);
+        } finally {
+          setGeolocating(false);
+          isGeolocatingRef.current = false;
         }
-        setGeolocating(false);
       },
-      () => setGeolocating(false),
+      () => {
+        setGeolocating(false);
+        isGeolocatingRef.current = false;
+      },
       { timeout: 5000 }
     );
-  }, [onChange]);
+  }, [geolocationTrigger]);
 
   // --- 2. Load NEW Google Places API ---
   // Load Google Maps (new API)
@@ -121,7 +179,7 @@ export function LocationInput({
 
       autocompleteRef.current = autocomplete;
     });
-  }, [geolocating]);
+  }, [geolocating, value, onChange]);
 
   // --- 3. Handle input changes w/ new Autocomplete Predictions API ---
   const handleInputChange = useCallback(
@@ -155,7 +213,7 @@ export function LocationInput({
 
   // --- 4. Handle suggestion click using new Place Details API ---
   const handleSuggestionSelect = useCallback(
-    async (suggestion: any) => {
+    async (suggestion: GoogleMapsAutocompletePrediction) => {
       setShowSuggestions(false);
       setSuggestions([]);
       onChange(suggestion.description);
@@ -204,7 +262,7 @@ export function LocationInput({
 
             {showSuggestions && suggestions.length > 0 && (
               <div className='absolute z-50 w-full mt-1 bg-background border rounded-lg shadow-lg max-h-60 overflow-auto'>
-                {suggestions.map((item: any) => (
+                {suggestions.map((item) => (
                   <button
                     key={item.place_id}
                     type='button'

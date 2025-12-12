@@ -10,6 +10,7 @@ import {
   ProductivityData,
   FinancialAccount,
   type FinancialData,
+  isPlaceholderCryptoData,
 } from '@/lib/db';
 
 const COINGECKO_IDS: Record<string, string> = {
@@ -182,6 +183,17 @@ async function saveCryptoData(
       updateUserDataSection(userId, 'crypto', null);
       return;
     }
+  } else if (method === 'plaid') {
+    // Plaid crypto holdings are already synced via /api/crypto/plaid
+    // Just fetch the current crypto data (it should already be synced)
+    const userData = await getUserData(userId);
+    if (userData?.crypto && !isPlaceholderCryptoData(userData.crypto)) {
+      // Crypto data already exists from Plaid sync, no need to update
+      return;
+    }
+    // If no crypto data exists yet, return (it will be synced when user links)
+    updateUserDataSection(userId, 'crypto', null);
+    return;
   }
 
   if (!holdings?.length) {
@@ -286,34 +298,53 @@ async function saveWeatherData(
       return;
     }
 
-    const convertTemp = (value: string) =>
-      unit === 'fahrenheit'
-        ? Number(value)
-        : Math.round(((Number(value) - 32) * 5) / 9);
+    // Helper functions to convert Fahrenheit to Celsius
+    const fToC = (f: number) => Math.round(((f - 32) * 5) / 9);
+    const parseTemp = (value: string) => Number(value);
 
-    const forecast = daily.map((day: any) => ({
-      day: new Date(day.date).toLocaleDateString(undefined, {
-        weekday: 'short',
-      }),
-      high: convertTemp(day.maxtempF),
-      low: convertTemp(day.mintempF),
-      condition: day.hourly?.[4]?.weatherDesc?.[0]?.value ?? '—',
-    }));
+    // Store both Fahrenheit and Celsius values for instant unit switching
+    const tempF = parseTemp(current.temp_F);
+    const tempC = fToC(tempF);
 
-    const hourly = (daily[0]?.hourly ?? []).map((slot: any, index: number) => ({
-      hour: index * 3,
-      temp: convertTemp(slot.tempF),
-      condition: slot.weatherDesc?.[0]?.value ?? '—',
-    }));
+    const forecast = daily.map((day: any) => {
+      const highF = parseTemp(day.maxtempF);
+      const lowF = parseTemp(day.mintempF);
+      return {
+        day: new Date(day.date).toLocaleDateString(undefined, {
+          weekday: 'short',
+        }),
+        high: highF, // Keep for backward compatibility
+        highF,
+        highC: fToC(highF),
+        low: lowF, // Keep for backward compatibility
+        lowF,
+        lowC: fToC(lowF),
+        condition: day.hourly?.[4]?.weatherDesc?.[0]?.value ?? '—',
+      };
+    });
+
+    const hourly = (daily[0]?.hourly ?? []).map((slot: any, index: number) => {
+      const tempF = parseTemp(slot.tempF);
+      return {
+        hour: index * 3,
+        temp: tempF, // Keep for backward compatibility
+        tempF,
+        tempC: fToC(tempF),
+        condition: slot.weatherDesc?.[0]?.value ?? '—',
+      };
+    });
 
     const payload: WeatherData = {
       location,
-      temperature: convertTemp(current.temp_F),
+      temperature: tempF, // Keep for backward compatibility
+      temperatureF: tempF,
+      temperatureC: tempC,
       condition: current.weatherDesc?.[0]?.value ?? '—',
       humidity: Number(current.humidity ?? 0),
       windSpeed: Number(current.windspeedMiles ?? 0),
       forecast,
       hourly: hourly.slice(0, 8),
+      unit,
     };
 
     updateUserDataSection(userId, 'weather', payload);

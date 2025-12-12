@@ -62,21 +62,30 @@ export interface ProductivityData {
 
 export interface WeatherData {
   location: string;
-  temperature: number;
+  temperature: number; // Keep for backward compatibility, will be temperatureF
+  temperatureF?: number; // Fahrenheit temperature
+  temperatureC?: number; // Celsius temperature
   condition: string;
   humidity: number;
   windSpeed: number;
   forecast: Array<{
     day: string;
-    high: number;
-    low: number;
+    high: number; // Keep for backward compatibility
+    highF?: number; // Fahrenheit high
+    highC?: number; // Celsius high
+    low: number; // Keep for backward compatibility
+    lowF?: number; // Fahrenheit low
+    lowC?: number; // Celsius low
     condition: string;
   }>;
   hourly: Array<{
     hour: number;
-    temp: number;
+    temp: number; // Keep for backward compatibility
+    tempF?: number; // Fahrenheit temp
+    tempC?: number; // Celsius temp
     condition: string;
   }>;
+  unit?: 'fahrenheit' | 'celsius'; // Keep for backward compatibility
 }
 
 export interface FinancialAccount {
@@ -128,7 +137,7 @@ export const SPENDING_CATEGORIES = [
   'other',
 ] as const;
 
-export type SpendingCategory = typeof SPENDING_CATEGORIES[number];
+export type SpendingCategory = (typeof SPENDING_CATEGORIES)[number];
 
 export interface UserData {
   userId: string;
@@ -334,22 +343,22 @@ export async function getUserByEmail(email: string): Promise<User | null> {
 }
 
 // Password reset functions
-export async function createPasswordResetToken(userId: string): Promise<string> {
+export async function createPasswordResetToken(
+  userId: string
+): Promise<string> {
   // Generate a secure random token
   const token = randomUUID() + '-' + randomUUID();
-  
+
   // Token expires in 1 hour
   const expiresAt = new Date();
   expiresAt.setHours(expiresAt.getHours() + 1);
 
-  const { error } = await supabase
-    .from('password_reset_tokens')
-    .insert({
-      user_id: userId,
-      token,
-      expires_at: expiresAt.toISOString(),
-      used: false,
-    });
+  const { error } = await supabase.from('password_reset_tokens').insert({
+    user_id: userId,
+    token,
+    expires_at: expiresAt.toISOString(),
+    used: false,
+  });
 
   if (error) {
     throw new Error(`Failed to create reset token: ${error.message}`);
@@ -358,7 +367,9 @@ export async function createPasswordResetToken(userId: string): Promise<string> 
   return token;
 }
 
-export async function verifyPasswordResetToken(token: string): Promise<{ userId: string } | null> {
+export async function verifyPasswordResetToken(
+  token: string
+): Promise<{ userId: string } | null> {
   const { data, error } = await supabase
     .from('password_reset_tokens')
     .select('user_id, expires_at, used')
@@ -389,7 +400,10 @@ export async function markTokenAsUsed(token: string): Promise<void> {
   }
 }
 
-export async function updateUserPassword(userId: string, newPassword: string): Promise<void> {
+export async function updateUserPassword(
+  userId: string,
+  newPassword: string
+): Promise<void> {
   const hashedPassword = await bcrypt.hash(newPassword, 10);
 
   const { error } = await supabase
@@ -571,12 +585,12 @@ export async function updateUserDataSection<T extends UserDataSection>(
   data: T extends 'crypto'
     ? CryptoData | null
     : T extends 'productivity'
-    ? ProductivityData | null
-    : T extends 'weather'
-    ? WeatherData | null
-    : T extends 'financial'
-    ? FinancialData | null
-    : never
+      ? ProductivityData | null
+      : T extends 'weather'
+        ? WeatherData | null
+        : T extends 'financial'
+          ? FinancialData | null
+          : never
 ): Promise<void> {
   await ensureUserRecords(userId);
 
@@ -1011,4 +1025,218 @@ export async function readUserConfigs(): Promise<Record<string, UserConfig>> {
     };
   }
   return result;
+}
+
+// Plaid Item interfaces
+export interface PlaidItem {
+  id: string;
+  userId: string;
+  itemId: string;
+  accessToken: string; // Decrypted
+  institutionId?: string;
+  institutionName?: string;
+  lastSyncedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Plaid Item functions
+export async function storePlaidItem(
+  userId: string,
+  itemId: string,
+  accessToken: string,
+  institutionId?: string,
+  institutionName?: string
+): Promise<PlaidItem> {
+  const { encrypt } = await import('./encryption');
+  const encryptedToken = encrypt(accessToken);
+
+  // Check if item already exists
+  const existing = await getPlaidItemByItemId(userId, itemId);
+  if (existing) {
+    // Update existing item
+    const { data, error } = await supabase
+      .from('plaid_items')
+      .update({
+        access_token: encryptedToken,
+        institution_id: institutionId || existing.institutionId,
+        institution_name: institutionName || existing.institutionName,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', userId)
+      .eq('item_id', itemId)
+      .select()
+      .single();
+
+    if (error) {
+      throw new Error(`Failed to update Plaid item: ${error.message}`);
+    }
+
+    return {
+      id: data.id,
+      userId: data.user_id,
+      itemId: data.item_id,
+      accessToken, // Return decrypted
+      institutionId: data.institution_id || undefined,
+      institutionName: data.institution_name || undefined,
+      lastSyncedAt: data.last_synced_at || undefined,
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
+  }
+
+  // Create new item
+  const { data, error } = await supabase
+    .from('plaid_items')
+    .insert({
+      user_id: userId,
+      item_id: itemId,
+      access_token: encryptedToken,
+      institution_id: institutionId,
+      institution_name: institutionName,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to store Plaid item: ${error.message}`);
+  }
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    itemId: data.item_id,
+    accessToken, // Return decrypted
+    institutionId: data.institution_id || undefined,
+    institutionName: data.institution_name || undefined,
+    lastSyncedAt: data.last_synced_at || undefined,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+export async function getPlaidItems(userId: string): Promise<PlaidItem[]> {
+  const { decrypt } = await import('./encryption');
+  const { data, error } = await supabase
+    .from('plaid_items')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data.map((item) => {
+    let accessToken = '';
+    try {
+      accessToken = decrypt(item.access_token);
+    } catch (err) {
+      console.error('Failed to decrypt access token for item:', item.item_id);
+      // Return empty token - caller should handle this
+    }
+
+    return {
+      id: item.id,
+      userId: item.user_id,
+      itemId: item.item_id,
+      accessToken,
+      institutionId: item.institution_id || undefined,
+      institutionName: item.institution_name || undefined,
+      lastSyncedAt: item.last_synced_at || undefined,
+      createdAt: item.created_at,
+      updatedAt: item.updated_at,
+    };
+  });
+}
+
+export async function getPlaidItemByItemId(
+  userId: string,
+  itemId: string
+): Promise<PlaidItem | null> {
+  const { decrypt } = await import('./encryption');
+  const { data, error } = await supabase
+    .from('plaid_items')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('item_id', itemId)
+    .single();
+
+  if (error || !data) {
+    return null;
+  }
+
+  let accessToken = '';
+  try {
+    accessToken = decrypt(data.access_token);
+  } catch (err) {
+    console.error('Failed to decrypt access token for item:', itemId);
+    return null;
+  }
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    itemId: data.item_id,
+    accessToken,
+    institutionId: data.institution_id || undefined,
+    institutionName: data.institution_name || undefined,
+    lastSyncedAt: data.last_synced_at || undefined,
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  };
+}
+
+export async function deletePlaidItem(
+  userId: string,
+  itemId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('plaid_items')
+    .delete()
+    .eq('user_id', userId)
+    .eq('item_id', itemId);
+
+  if (error) {
+    throw new Error(`Failed to delete Plaid item: ${error.message}`);
+  }
+}
+
+export async function updatePlaidItemLastSynced(
+  userId: string,
+  itemId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('plaid_items')
+    .update({ last_synced_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('item_id', itemId);
+
+  if (error) {
+    throw new Error(
+      `Failed to update Plaid item last synced: ${error.message}`
+    );
+  }
+}
+
+export async function updatePlaidItemInstitution(
+  userId: string,
+  itemId: string,
+  institutionId: string,
+  institutionName: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('plaid_items')
+    .update({
+      institution_id: institutionId,
+      institution_name: institutionName,
+    })
+    .eq('user_id', userId)
+    .eq('item_id', itemId);
+
+  if (error) {
+    throw new Error(
+      `Failed to update Plaid item institution: ${error.message}`
+    );
+  }
 }

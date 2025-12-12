@@ -33,6 +33,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { PlaidLinkButton } from '@/components/plaid-link-button';
+import { PlaidCryptoLinkButton } from '@/components/plaid-crypto-link-button';
 
 type Step =
   | 'intro'
@@ -74,7 +75,7 @@ function OnboardingContent() {
   ]);
   const [cryptoEnabled, setCryptoEnabled] = useState(true);
   const [cryptoMethod, setCryptoMethod] = useState<
-    'manual' | 'exchange' | 'wallet' | 'browser-wallet'
+    'manual' | 'exchange' | 'wallet' | 'browser-wallet' | 'plaid'
   >('manual');
   const [exchangeCredentials, setExchangeCredentials] = useState({
     exchange: 'binance' as 'binance' | 'coinbase' | 'kraken',
@@ -147,6 +148,9 @@ function OnboardingContent() {
       }
       if (cryptoMethod === 'browser-wallet') {
         return true; // Connection happens on click
+      }
+      if (cryptoMethod === 'plaid') {
+        return true; // Connection happens via Plaid, holdings synced automatically
       }
     }
     if (step === 'weather' && weatherEnabled) {
@@ -235,6 +239,13 @@ function OnboardingContent() {
             })),
           };
         }
+      } else if (cryptoMethod === 'plaid') {
+        // Plaid crypto holdings are synced automatically via API
+        // No need to include in payload - they're already stored
+        // Just mark crypto as enabled
+        payload.crypto = {
+          method: 'plaid',
+        };
       }
     }
 
@@ -306,7 +317,10 @@ function OnboardingContent() {
                 can update these anytime.
               </p>
             </div>
-            <Button onClick={nextStep} className='px-8'>
+            <Button
+              onClick={nextStep}
+              className='px-8'
+            >
               Get started <ArrowRight className='w-4 h-4 ml-2' />
             </Button>
           </div>
@@ -337,7 +351,7 @@ function OnboardingContent() {
             {cryptoEnabled && (
               <div className='space-y-6'>
                 {/* Connection Method Selector */}
-                <div className='grid grid-cols-1 md:grid-cols-2 gap-3'>
+                <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3'>
                   <button
                     type='button'
                     onClick={() => setCryptoMethod('manual')}
@@ -353,6 +367,23 @@ function OnboardingContent() {
                     </div>
                     <p className='text-xs text-muted-foreground'>
                       Enter holdings manually
+                    </p>
+                  </button>
+                  <button
+                    type='button'
+                    onClick={() => setCryptoMethod('plaid')}
+                    className={`p-4 border rounded-lg text-left transition-colors ${
+                      cryptoMethod === 'plaid'
+                        ? 'border-primary bg-primary/10'
+                        : 'border-border hover:bg-accent/50'
+                    }`}
+                  >
+                    <div className='flex items-center gap-2 mb-1'>
+                      <Link2 className='w-4 h-4' />
+                      <span className='font-medium'>Plaid (Recommended)</span>
+                    </div>
+                    <p className='text-xs text-muted-foreground'>
+                      Link crypto exchanges via Plaid
                     </p>
                   </button>
                   <button
@@ -541,7 +572,10 @@ function OnboardingContent() {
                 {cryptoMethod === 'wallet' && (
                   <div className='space-y-4'>
                     {walletAddresses.map((wallet, index) => (
-                      <div key={index} className='flex gap-3 items-end'>
+                      <div
+                        key={index}
+                        className='flex gap-3 items-end'
+                      >
                         <div className='flex-1'>
                           <Label>Chain</Label>
                           <select
@@ -615,6 +649,33 @@ function OnboardingContent() {
                   </div>
                 )}
 
+                {/* Plaid Crypto Exchange */}
+                {cryptoMethod === 'plaid' && (
+                  <div className='space-y-4'>
+                    <p className='text-sm text-muted-foreground'>
+                      Link your crypto exchange account via Plaid. This will
+                      automatically sync your crypto holdings.
+                    </p>
+                    <PlaidCryptoLinkButton
+                      onSuccess={async (itemId, institutionName) => {
+                        setConnectionStatus(
+                          `Successfully linked ${institutionName || 'crypto exchange'}! Holdings will be synced automatically.`
+                        );
+                        // Holdings are synced automatically via the API
+                        // No need to manually set holdings here
+                      }}
+                      onError={(error) => {
+                        setConnectionStatus(`Error: ${error}`);
+                      }}
+                    />
+                    {connectionStatus && (
+                      <p className='text-sm text-muted-foreground'>
+                        {connectionStatus}
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* Browser Wallet */}
                 {cryptoMethod === 'browser-wallet' && (
                   <div className='space-y-4'>
@@ -624,9 +685,8 @@ function OnboardingContent() {
                         setConnecting(true);
                         setConnectionStatus(null);
                         try {
-                          const { connectBrowserWallet } = await import(
-                            '@/lib/crypto-connectors'
-                          );
+                          const { connectBrowserWallet } =
+                            await import('@/lib/crypto-connectors');
                           const detectedHoldings = await connectBrowserWallet();
                           setConnectionStatus(
                             `Connected! Found ${detectedHoldings.length} asset(s).`
@@ -715,50 +775,18 @@ function OnboardingContent() {
                     </p>
                   </div>
                   <PlaidLinkButton
-                    onSuccess={async (publicToken, metadata) => {
-                      try {
-                        const exchangeResponse = await fetch(
-                          '/api/financial/plaid',
-                          {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              action: 'exchange_token',
-                              public_token: publicToken,
-                            }),
-                          }
-                        );
-
-                        if (!exchangeResponse.ok) {
-                          throw new Error('Failed to exchange token');
-                        }
-
-                        const exchangeData = await exchangeResponse.json();
-
-                        const syncResponse = await fetch(
-                          '/api/financial/plaid',
-                          {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              action: 'sync',
-                              access_token: exchangeData.access_token,
-                            }),
-                          }
-                        );
-
-                        if (!syncResponse.ok) {
-                          throw new Error('Failed to sync accounts');
-                        }
-
-                        alert(
-                          'Accounts linked successfully! You can continue with onboarding.'
-                        );
-                      } catch (error: any) {
-                        console.error('Plaid sync error:', error);
-                        alert('Failed to sync accounts: ' + error.message);
+                    onSuccess={async (itemId, institutionName) => {
+                      // Account is already linked and synced by PlaidLinkButton
+                      if (institutionName) {
+                        alert(`Successfully linked ${institutionName}!`);
+                      } else {
+                        alert('Account linked successfully!');
                       }
                     }}
+                    onError={(error) => {
+                      alert('Failed to link account: ' + error);
+                    }}
+                    autoSync={true}
                   />
                 </div>
                 <div className='border-t pt-4'>
@@ -766,7 +794,10 @@ function OnboardingContent() {
                     Or add accounts manually:
                   </p>
                   {financialAccounts.map((account, index) => (
-                    <Card key={index} className='border'>
+                    <Card
+                      key={index}
+                      className='border'
+                    >
                       <CardContent className='pt-6'>
                         <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                           <div>

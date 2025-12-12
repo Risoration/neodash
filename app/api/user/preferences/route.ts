@@ -11,7 +11,6 @@ export async function GET() {
   const config = await getUserConfig(user.id);
   return NextResponse.json({
     preferences: config?.preferences || {
-      temperatureUnit: "fahrenheit",
       blockedSites: [],
     },
   });
@@ -25,14 +24,7 @@ export async function PUT(request: Request) {
 
   try {
     const body = await request.json();
-    const { temperatureUnit, blockedSites } = body;
-
-    if (temperatureUnit && !["fahrenheit", "celsius"].includes(temperatureUnit)) {
-      return NextResponse.json(
-        { error: "Invalid temperature unit" },
-        { status: 400 }
-      );
-    }
+    const { blockedSites } = body;
 
     if (blockedSites !== undefined && !Array.isArray(blockedSites)) {
       return NextResponse.json(
@@ -45,62 +37,9 @@ export async function PUT(request: Request) {
     await updateUserConfig(user.id, {
       preferences: {
         ...currentConfig?.preferences,
-        temperatureUnit: temperatureUnit || currentConfig?.preferences?.temperatureUnit || "fahrenheit",
         blockedSites: blockedSites !== undefined ? blockedSites : currentConfig?.preferences?.blockedSites || [],
       },
     });
-
-    // If user has weather data, refresh it with the new unit
-    const userData = await getUserData(user.id);
-    if (userData?.weather?.location) {
-      // Trigger weather data refresh by calling the setup endpoint
-      // This will re-fetch weather with the new unit preference
-      try {
-        const weatherResponse = await fetch(
-          `https://wttr.in/${encodeURIComponent(userData.weather.location)}?format=j1`,
-          { next: { revalidate: 0 } }
-        );
-        const weatherData = await weatherResponse.json();
-        
-        if (weatherData?.current_condition?.[0]) {
-          const current = weatherData.current_condition[0];
-          const daily = weatherData.weather?.slice(0, 5) ?? [];
-          
-          const convertTemp = (value: string) =>
-            temperatureUnit === "fahrenheit"
-              ? Number(value)
-              : Math.round(((Number(value) - 32) * 5) / 9);
-
-          const forecast = daily.map((day: any) => ({
-            day: new Date(day.date).toLocaleDateString(undefined, {
-              weekday: "short",
-            }),
-            high: convertTemp(day.maxtempF),
-            low: convertTemp(day.mintempF),
-            condition: day.hourly?.[4]?.weatherDesc?.[0]?.value ?? "—",
-          }));
-
-          const hourly = (daily[0]?.hourly ?? []).map((slot: any, index: number) => ({
-            hour: index * 3,
-            temp: convertTemp(slot.tempF),
-            condition: slot.weatherDesc?.[0]?.value ?? "—",
-          }));
-
-          updateUserDataSection(user.id, "weather", {
-            location: userData.weather.location,
-            temperature: convertTemp(current.temp_F),
-            condition: current.weatherDesc?.[0]?.value ?? "—",
-            humidity: Number(current.humidity ?? 0),
-            windSpeed: Number(current.windspeedMiles ?? 0),
-            forecast,
-            hourly: hourly.slice(0, 8),
-          });
-        }
-      } catch (error) {
-        console.error("Error refreshing weather data:", error);
-        // Don't fail the request if weather refresh fails
-      }
-    }
 
     return NextResponse.json({ message: "Preferences updated" });
   } catch (error) {

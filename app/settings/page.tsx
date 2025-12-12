@@ -36,10 +36,20 @@ import {
 import { useSession } from 'next-auth/react';
 import { useSearchParams } from 'next/navigation';
 import { PlaidLinkButton } from '@/components/plaid-link-button';
+import { PlaidAccountManager } from '@/components/plaid-account-manager';
 import { formatCurrency } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { SPENDING_CATEGORIES, type SpendingCategory } from '@/lib/db';
 import { DollarSign, Target } from 'lucide-react';
+import { LocationInput } from '@/components/location-input';
+import { MapPin } from 'lucide-react';
+import type {
+  UserData,
+  UserProfile,
+  FinancialAccount,
+  BudgetData,
+  UserConfig,
+} from '@/types';
 
 function SettingsContent() {
   const { data: session } = useSession();
@@ -51,15 +61,30 @@ function SettingsContent() {
     refreshInterval,
     setRefreshInterval,
   } = useDashboardStore();
-  const [userData, setUserData] = useState<any>(null);
+  const [userData, setUserData] = useState<UserProfile | null>(null);
+  const [userDataFull, setUserDataFull] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [preferences, setPreferences] = useState<{
     temperatureUnit: 'fahrenheit' | 'celsius';
-  }>({
-    temperatureUnit: 'fahrenheit',
+  }>(() => {
+    // Initialize from localStorage if available
+    if (typeof window !== 'undefined') {
+      const savedUnit = localStorage.getItem('temperatureUnit') as
+        | 'fahrenheit'
+        | 'celsius'
+        | null;
+      return {
+        temperatureUnit: savedUnit || 'fahrenheit',
+      };
+    }
+    return {
+      temperatureUnit: 'fahrenheit',
+    };
   });
   const [savingPreferences, setSavingPreferences] = useState(false);
-  const [financialAccounts, setFinancialAccounts] = useState<any[]>([]);
+  const [financialAccounts, setFinancialAccounts] = useState<
+    FinancialAccount[]
+  >([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
   const [editingAccount, setEditingAccount] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({ name: '', balance: '' });
@@ -71,8 +96,23 @@ function SettingsContent() {
   const searchParams = useSearchParams();
   const [highlightFocusCard, setHighlightFocusCard] = useState(false);
   const focusCardRef = useRef<HTMLDivElement | null>(null);
-  const [budgetData, setBudgetData] = useState<any>(null);
+  const [budgetData, setBudgetData] = useState<BudgetData | null>(null);
   const [savingBudget, setSavingBudget] = useState(false);
+  const loadFinancialAccounts = async () => {
+    setLoadingAccounts(true);
+    try {
+      const response = await fetch('/api/financial/accounts');
+      if (response.ok) {
+        const data = await response.json();
+        setFinancialAccounts(data.accounts || []);
+      }
+    } catch (error) {
+      console.error('Error fetching accounts:', error);
+    } finally {
+      setLoadingAccounts(false);
+    }
+  };
+
   const [budgetForm, setBudgetForm] = useState<{
     budgets: Record<string, number>;
     dailyGoal: number;
@@ -82,14 +122,33 @@ function SettingsContent() {
     dailyGoal: 0,
     monthlyGoal: 0,
   });
+  const [location, setLocation] = useState('');
+  const [locationCoordinates, setLocationCoordinates] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [geolocationTrigger, setGeolocationTrigger] = useState<
+    (() => void) | null
+  >(null);
 
   useEffect(() => {
     async function fetchUserData() {
       try {
         const response = await fetch('/api/user');
         if (response.ok) {
-          const data = await response.json();
+          const data = (await response.json()) as UserProfile;
           setUserData(data);
+        }
+        // Fetch weather data separately for location
+        const weatherResponse = await fetch('/api/weather');
+        if (weatherResponse.ok) {
+          const weatherData = (await weatherResponse.json()) as {
+            data?: { location: string };
+          };
+          if (weatherData.data?.location) {
+            setLocation(weatherData.data.location);
+          }
         }
       } catch (error) {
         console.error('Error fetching user data:', error);
@@ -102,11 +161,18 @@ function SettingsContent() {
         const response = await fetch('/api/user/preferences');
         if (response.ok) {
           const data = await response.json();
-          setPreferences(data.preferences);
           setBlockedSites(data.preferences.blockedSites || []);
         }
       } catch (error) {
         console.error('Error fetching preferences:', error);
+      }
+      // Load temperature unit from localStorage
+      const savedUnit = localStorage.getItem('temperatureUnit') as
+        | 'fahrenheit'
+        | 'celsius'
+        | null;
+      if (savedUnit) {
+        setPreferences({ temperatureUnit: savedUnit });
       }
     }
     async function fetchExtensionStatus() {
@@ -127,18 +193,7 @@ function SettingsContent() {
       }
     }
     async function fetchFinancialAccounts() {
-      setLoadingAccounts(true);
-      try {
-        const response = await fetch('/api/financial/accounts');
-        if (response.ok) {
-          const data = await response.json();
-          setFinancialAccounts(data.accounts || []);
-        }
-      } catch (error) {
-        console.error('Error fetching accounts:', error);
-      } finally {
-        setLoadingAccounts(false);
-      }
+      await loadFinancialAccounts();
     }
     async function fetchBudgetData() {
       try {
@@ -149,9 +204,11 @@ function SettingsContent() {
           // Initialize form with existing data
           const budgetsObj: Record<string, number> = {};
           if (data.budgets) {
-            data.budgets.forEach((b: any) => {
-              budgetsObj[b.category] = b.monthlyBudget;
-            });
+            data.budgets.forEach(
+              (b: { category: string; monthlyBudget: number }) => {
+                budgetsObj[b.category] = b.monthlyBudget;
+              }
+            );
           }
           setBudgetForm({
             budgets: budgetsObj,
@@ -166,7 +223,7 @@ function SettingsContent() {
     if (session) {
       fetchUserData();
       fetchPreferences();
-      fetchFinancialAccounts();
+      loadFinancialAccounts();
       fetchExtensionStatus();
       fetchBudgetData();
     }
@@ -188,24 +245,95 @@ function SettingsContent() {
     }
   }, [searchParams]);
 
-  const handleTemperatureUnitChange = async (
-    unit: 'fahrenheit' | 'celsius'
-  ) => {
-    setSavingPreferences(true);
+  const handleTemperatureUnitChange = (unit: 'fahrenheit' | 'celsius') => {
+    // Update state immediately
+    setPreferences({ temperatureUnit: unit });
+    // Save to localStorage for persistence
+    localStorage.setItem('temperatureUnit', unit);
+    // Trigger a custom event so dashboard can update instantly
+    window.dispatchEvent(
+      new CustomEvent('temperatureUnitChanged', { detail: unit })
+    );
+  };
+
+  const handleSaveLocation = async () => {
+    if (!location.trim()) {
+      return;
+    }
+
+    setSavingLocation(true);
     try {
-      const response = await fetch('/api/user/preferences', {
-        method: 'PUT',
+      const response = await fetch('/api/user/setup', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ temperatureUnit: unit }),
+        body: JSON.stringify({
+          weather: {
+            location: location.trim(),
+            coordinates: locationCoordinates
+              ? { lat: locationCoordinates.lat, lng: locationCoordinates.lng }
+              : undefined,
+          },
+        }),
       });
+
       if (response.ok) {
-        setPreferences({ temperatureUnit: unit });
-        // Weather data is automatically refreshed by the API
+        // Refresh user data to get updated location
+        const userResponse = await fetch('/api/user');
+        if (userResponse.ok) {
+          const data = await userResponse.json();
+          setUserData(data);
+        }
       }
     } catch (error) {
-      console.error('Error updating preferences:', error);
+      console.error('Error saving location:', error);
     } finally {
-      setSavingPreferences(false);
+      setSavingLocation(false);
+    }
+  };
+
+  const handleRequestLocation = () => {
+    if (geolocationTrigger) {
+      // Use the LocationInput's geolocation trigger
+      geolocationTrigger();
+    } else if (navigator.geolocation) {
+      // Fallback: direct geolocation if trigger not available
+      setSavingLocation(true);
+      navigator.geolocation.getCurrentPosition(
+        async (position) => {
+          try {
+            const { latitude, longitude } = position.coords;
+            const response = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
+            );
+            const data = await response.json();
+
+            if (data.address) {
+              const locationName =
+                data.address.city ||
+                data.address.town ||
+                data.address.village ||
+                data.address.county ||
+                data.display_name.split(',')[0];
+
+              const fullLocation = `${locationName}, ${
+                data.address.country ?? ''
+              }`.trim();
+
+              setLocation(fullLocation);
+              setLocationCoordinates({ lat: latitude, lng: longitude });
+            }
+          } catch (error) {
+            console.error('Reverse geocoding error:', error);
+          } finally {
+            setSavingLocation(false);
+          }
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          setSavingLocation(false);
+        },
+        { timeout: 5000 }
+      );
     }
   };
 
@@ -479,49 +607,114 @@ function SettingsContent() {
                 <CardHeader>
                   <div className='flex items-center gap-2'>
                     <Thermometer className='w-5 h-5' />
-                    <CardTitle>Preferences</CardTitle>
+                    <CardTitle>Temperature Unit</CardTitle>
                   </div>
                   <CardDescription>
-                    Customize your display preferences
+                    Choose your preferred temperature unit
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className='flex items-center gap-2'>
+                    <Button
+                      variant={
+                        preferences.temperatureUnit === 'fahrenheit'
+                          ? 'default'
+                          : 'outline'
+                      }
+                      size='sm'
+                      onClick={() => handleTemperatureUnitChange('fahrenheit')}
+                      className='h-8 px-3 text-xs'
+                    >
+                      °F
+                    </Button>
+                    <Button
+                      variant={
+                        preferences.temperatureUnit === 'celsius'
+                          ? 'default'
+                          : 'outline'
+                      }
+                      size='sm'
+                      onClick={() => handleTemperatureUnitChange('celsius')}
+                      className='h-8 px-3 text-xs'
+                    >
+                      °C
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.275 }}
+              className='md:col-span-2'
+            >
+              <Card className='glass-card border-0'>
+                <CardHeader>
+                  <div className='flex items-center gap-2'>
+                    <MapPin className='w-5 h-5' />
+                    <CardTitle>Location</CardTitle>
+                  </div>
+                  <CardDescription>
+                    Update your weather location
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className='space-y-4'>
                     <div>
-                      <Label className='text-sm mb-2 block'>
-                        Temperature Unit
-                      </Label>
-                      <div className='flex gap-2'>
-                        <Button
-                          variant={
-                            preferences.temperatureUnit === 'fahrenheit'
-                              ? 'default'
-                              : 'outline'
+                      <LocationInput
+                        value={location}
+                        onChange={(loc, coordinates) => {
+                          setLocation(loc);
+                          if (coordinates) {
+                            setLocationCoordinates({
+                              lat: coordinates.latitude,
+                              lng: coordinates.longitude,
+                            });
                           }
-                          size='sm'
-                          onClick={() =>
-                            handleTemperatureUnitChange('fahrenheit')
-                          }
-                          disabled={savingPreferences}
-                          className='flex-1'
-                        >
-                          °F
-                        </Button>
-                        <Button
-                          variant={
-                            preferences.temperatureUnit === 'celsius'
-                              ? 'default'
-                              : 'outline'
-                          }
-                          size='sm'
-                          onClick={() => handleTemperatureUnitChange('celsius')}
-                          disabled={savingPreferences}
-                          className='flex-1'
-                        >
-                          °C
-                        </Button>
-                      </div>
+                        }}
+                        label='Weather Location'
+                        placeholder='City, Country'
+                        onGeolocationTrigger={(triggerFn) => {
+                          setGeolocationTrigger(() => triggerFn);
+                        }}
+                      />
                     </div>
+                    <div className='flex gap-2'>
+                      <Button
+                        variant='outline'
+                        size='sm'
+                        onClick={handleRequestLocation}
+                        disabled={savingLocation}
+                        className='flex-1'
+                      >
+                        {savingLocation ? (
+                          <>
+                            <RefreshCw className='w-4 h-4 mr-2 animate-spin' />
+                            Detecting...
+                          </>
+                        ) : (
+                          <>
+                            <MapPin className='w-4 h-4 mr-2' />
+                            Use Current Location
+                          </>
+                        )}
+                      </Button>
+                      <Button
+                        size='sm'
+                        onClick={handleSaveLocation}
+                        disabled={savingLocation || !location.trim()}
+                        className='flex-1'
+                      >
+                        Save Location
+                      </Button>
+                    </div>
+                    {location && (
+                      <p className='text-xs text-muted-foreground'>
+                        Current location: {location}
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -587,56 +780,18 @@ function SettingsContent() {
                     </div>
                     <div className='flex gap-2'>
                       <PlaidLinkButton
-                        onSuccess={async (publicToken, metadata) => {
-                          try {
-                            const exchangeResponse = await fetch(
-                              '/api/financial/plaid',
-                              {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  action: 'exchange_token',
-                                  public_token: publicToken,
-                                }),
-                              }
-                            );
-
-                            if (!exchangeResponse.ok) {
-                              throw new Error('Failed to exchange token');
-                            }
-
-                            const exchangeData = await exchangeResponse.json();
-
-                            const syncResponse = await fetch(
-                              '/api/financial/plaid',
-                              {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({
-                                  action: 'sync',
-                                  access_token: exchangeData.access_token,
-                                }),
-                              }
-                            );
-
-                            if (!syncResponse.ok) {
-                              throw new Error('Failed to sync accounts');
-                            }
-
-                            // Refresh accounts list
-                            const accountsResponse = await fetch(
-                              '/api/financial/accounts'
-                            );
-                            if (accountsResponse.ok) {
-                              const data = await accountsResponse.json();
-                              setFinancialAccounts(data.accounts || []);
-                            }
-
-                            alert('Accounts linked successfully!');
-                          } catch (error: any) {
-                            console.error('Plaid sync error:', error);
-                            alert('Failed to sync accounts: ' + error.message);
+                        onSuccess={async (itemId, institutionName) => {
+                          // Account is already linked and synced by PlaidLinkButton
+                          // Just refresh the accounts list
+                          await loadFinancialAccounts();
+                          if (institutionName) {
+                            alert(`Successfully linked ${institutionName}!`);
+                          } else {
+                            alert('Account linked successfully!');
                           }
+                        }}
+                        onError={(error) => {
+                          alert('Failed to link account: ' + error);
                         }}
                       />
                       <Button
@@ -656,141 +811,154 @@ function SettingsContent() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {loadingAccounts ? (
-                    <div className='text-sm text-muted-foreground'>
-                      Loading accounts...
-                    </div>
-                  ) : financialAccounts.length === 0 ? (
-                    <div className='text-sm text-muted-foreground text-center py-4'>
-                      No accounts linked yet. Add accounts manually or link via
-                      Plaid.
-                    </div>
-                  ) : (
-                    <div className='space-y-3'>
-                      {financialAccounts.map((account) => (
-                        <div
-                          key={account.id}
-                          className='flex items-center justify-between p-3 border rounded-lg'
-                        >
-                          <div className='flex-1'>
-                            <div className='flex items-center gap-2'>
-                              <p className='font-medium'>{account.name}</p>
-                              {account.institution && (
-                                <span className='text-xs text-muted-foreground'>
-                                  ({account.institution})
-                                </span>
-                              )}
-                              <Badge variant='secondary' className='text-xs'>
-                                {account.type.replace('_', ' ')}
-                              </Badge>
-                              {account.linkedVia === 'plaid' && (
-                                <Badge variant='outline' className='text-xs'>
-                                  Plaid
+                  <div className='space-y-6'>
+                    {/* Plaid Account Manager */}
+                    <PlaidAccountManager
+                      onSyncComplete={async () => {
+                        await loadFinancialAccounts();
+                      }}
+                    />
+
+                    {/* Accounts List */}
+                    {loadingAccounts ? (
+                      <div className='text-sm text-muted-foreground'>
+                        Loading accounts...
+                      </div>
+                    ) : financialAccounts.length === 0 ? (
+                      <div className='text-sm text-muted-foreground text-center py-4'>
+                        No accounts linked yet. Add accounts manually or link
+                        via Plaid.
+                      </div>
+                    ) : (
+                      <div className='space-y-3'>
+                        {financialAccounts.map((account) => (
+                          <div
+                            key={account.id}
+                            className='flex items-center justify-between p-3 border rounded-lg'
+                          >
+                            <div className='flex-1'>
+                              <div className='flex items-center gap-2'>
+                                <p className='font-medium'>{account.name}</p>
+                                {account.institution && (
+                                  <span className='text-xs text-muted-foreground'>
+                                    ({account.institution})
+                                  </span>
+                                )}
+                                <Badge
+                                  variant='secondary'
+                                  className='text-xs'
+                                >
+                                  {account.type.replace('_', ' ')}
                                 </Badge>
+                                {account.linkedVia === 'plaid' && (
+                                  <Badge
+                                    variant='outline'
+                                    className='text-xs'
+                                  >
+                                    Plaid
+                                  </Badge>
+                                )}
+                              </div>
+                              <p className='text-sm font-semibold mt-1'>
+                                {formatCurrency(account.balance)}{' '}
+                                {account.currency}
+                              </p>
+                              {account.lastSynced && (
+                                <p className='text-xs text-muted-foreground mt-1'>
+                                  Last synced:{' '}
+                                  {new Date(
+                                    account.lastSynced
+                                  ).toLocaleString()}
+                                </p>
                               )}
                             </div>
-                            <p className='text-sm font-semibold mt-1'>
-                              {formatCurrency(account.balance)}{' '}
-                              {account.currency}
-                            </p>
-                            {account.lastSynced && (
-                              <p className='text-xs text-muted-foreground mt-1'>
-                                Last synced:{' '}
-                                {new Date(account.lastSynced).toLocaleString()}
-                              </p>
-                            )}
-                          </div>
-                          <div className='flex items-center gap-2'>
-                            {editingAccount === account.id ? (
-                              <>
-                                <Input
-                                  placeholder='Name'
-                                  value={editForm.name}
-                                  onChange={(e) =>
-                                    setEditForm({
-                                      ...editForm,
-                                      name: e.target.value,
-                                    })
-                                  }
-                                  className='w-32'
-                                />
-                                <Input
-                                  type='number'
-                                  placeholder='Balance'
-                                  value={editForm.balance}
-                                  onChange={(e) =>
-                                    setEditForm({
-                                      ...editForm,
-                                      balance: e.target.value,
-                                    })
-                                  }
-                                  className='w-32'
-                                />
-                                <Button
-                                  size='sm'
-                                  onClick={() =>
-                                    handleUpdateAccount(account.id)
-                                  }
-                                >
-                                  Save
-                                </Button>
-                                <Button
-                                  size='sm'
-                                  variant='outline'
-                                  onClick={() => {
-                                    setEditingAccount(null);
-                                    setEditForm({ name: '', balance: '' });
-                                  }}
-                                >
-                                  Cancel
-                                </Button>
-                              </>
-                            ) : (
-                              <>
-                                <Button
-                                  variant='ghost'
-                                  size='sm'
-                                  onClick={() => {
-                                    setEditingAccount(account.id);
-                                    setEditForm({
-                                      name: account.name,
-                                      balance: account.balance.toString(),
-                                    });
-                                  }}
-                                >
-                                  <Edit2 className='w-4 h-4' />
-                                </Button>
-                                {account.linkedVia === 'plaid' && (
+                            <div className='flex items-center gap-2'>
+                              {editingAccount === account.id ? (
+                                <>
+                                  <Input
+                                    placeholder='Name'
+                                    value={editForm.name}
+                                    onChange={(e) =>
+                                      setEditForm({
+                                        ...editForm,
+                                        name: e.target.value,
+                                      })
+                                    }
+                                    className='w-32'
+                                  />
+                                  <Input
+                                    type='number'
+                                    placeholder='Balance'
+                                    value={editForm.balance}
+                                    onChange={(e) =>
+                                      setEditForm({
+                                        ...editForm,
+                                        balance: e.target.value,
+                                      })
+                                    }
+                                    className='w-32'
+                                  />
+                                  <Button
+                                    size='sm'
+                                    onClick={() =>
+                                      handleUpdateAccount(account.id)
+                                    }
+                                  >
+                                    Save
+                                  </Button>
+                                  <Button
+                                    size='sm'
+                                    variant='outline'
+                                    onClick={() => {
+                                      setEditingAccount(null);
+                                      setEditForm({ name: '', balance: '' });
+                                    }}
+                                  >
+                                    Cancel
+                                  </Button>
+                                </>
+                              ) : (
+                                <>
                                   <Button
                                     variant='ghost'
                                     size='sm'
                                     onClick={() => {
-                                      alert(
-                                        'Plaid sync requires access token. Please reconnect via Plaid Link.'
-                                      );
+                                      setEditingAccount(account.id);
+                                      setEditForm({
+                                        name: account.name,
+                                        balance: account.balance.toString(),
+                                      });
                                     }}
-                                    title='Sync with Plaid'
                                   >
-                                    <RefreshCcw className='w-4 h-4' />
+                                    <Edit2 className='w-4 h-4' />
                                   </Button>
-                                )}
-                                <Button
-                                  variant='ghost'
-                                  size='sm'
-                                  onClick={() =>
-                                    handleDeleteAccount(account.id)
-                                  }
-                                  className='text-red-500 hover:text-red-600'
-                                >
-                                  <Trash2 className='w-4 h-4' />
-                                </Button>
-                              </>
-                            )}
+                                  {account.linkedVia === 'plaid' && (
+                                    <Badge
+                                      variant='outline'
+                                      className='text-xs'
+                                      title='This account is synced via Plaid'
+                                    >
+                                      Auto-synced
+                                    </Badge>
+                                  )}
+                                  <Button
+                                    variant='ghost'
+                                    size='sm'
+                                    onClick={() =>
+                                      handleDeleteAccount(account.id)
+                                    }
+                                    className='text-red-500 hover:text-red-600'
+                                  >
+                                    <Trash2 className='w-4 h-4' />
+                                  </Button>
+                                </>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </motion.div>
@@ -809,7 +977,8 @@ function SettingsContent() {
                     <CardTitle>Budget & Goals</CardTitle>
                   </div>
                   <CardDescription>
-                    Set monthly budgets by category and daily/monthly spending goals
+                    Set monthly budgets by category and daily/monthly spending
+                    goals
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -821,7 +990,10 @@ function SettingsContent() {
                       </Label>
                       <div className='grid grid-cols-1 md:grid-cols-2 gap-4'>
                         {SPENDING_CATEGORIES.map((category) => (
-                          <div key={category} className='space-y-2'>
+                          <div
+                            key={category}
+                            className='space-y-2'
+                          >
                             <Label className='capitalize'>
                               {category === 'essentials'
                                 ? 'Essentials'
@@ -832,9 +1004,7 @@ function SettingsContent() {
                               type='number'
                               step='0.01'
                               placeholder='0.00'
-                              value={
-                                budgetForm.budgets[category] || ''
-                              }
+                              value={budgetForm.budgets[category] || ''}
                               onChange={(e) =>
                                 setBudgetForm({
                                   ...budgetForm,
@@ -947,15 +1117,18 @@ function SettingsContent() {
                               monthlyBudget,
                             }));
 
-                          const response = await fetch('/api/financial/budget', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({
-                              budgets: budgetsArray,
-                              dailyGoal: budgetForm.dailyGoal,
-                              monthlyGoal: budgetForm.monthlyGoal,
-                            }),
-                          });
+                          const response = await fetch(
+                            '/api/financial/budget',
+                            {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                budgets: budgetsArray,
+                                dailyGoal: budgetForm.dailyGoal,
+                                monthlyGoal: budgetForm.monthlyGoal,
+                              }),
+                            }
+                          );
 
                           if (!response.ok) {
                             const error = await response.json();
@@ -963,7 +1136,7 @@ function SettingsContent() {
                             return;
                           }
 
-                          await fetchBudgetData();
+                          await fetch('/api/financial/budget');
                           alert('Budget saved successfully!');
                         } catch (error) {
                           console.error('Error saving budget:', error);
@@ -1051,7 +1224,10 @@ function SettingsContent() {
                           }}
                           className='flex-1'
                         />
-                        <Button onClick={handleAddBlockedSite} size='sm'>
+                        <Button
+                          onClick={handleAddBlockedSite}
+                          size='sm'
+                        >
                           <Plus className='w-4 h-4 mr-2' />
                           Add
                         </Button>
