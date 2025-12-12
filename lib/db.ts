@@ -1127,27 +1127,39 @@ export async function getPlaidItems(userId: string): Promise<PlaidItem[]> {
     return [];
   }
 
-  return data.map((item) => {
-    let accessToken = '';
-    try {
-      accessToken = decrypt(item.access_token);
-    } catch (err) {
-      console.error('Failed to decrypt access token for item:', item.item_id);
-      // Return empty token - caller should handle this
-    }
+  return data.map(
+    (item: {
+      id: string;
+      user_id: string;
+      item_id: string;
+      access_token: string;
+      institution_id: string | undefined;
+      institution_name: string | undefined;
+      last_synced_at: string | undefined;
+      created_at: string;
+      updated_at: string;
+    }) => {
+      let accessToken = '';
+      try {
+        accessToken = decrypt(item.access_token);
+      } catch (err) {
+        console.error('Failed to decrypt access token for item:', item.item_id);
+        // Return empty token - caller should handle this
+      }
 
-    return {
-      id: item.id,
-      userId: item.user_id,
-      itemId: item.item_id,
-      accessToken,
-      institutionId: item.institution_id || undefined,
-      institutionName: item.institution_name || undefined,
-      lastSyncedAt: item.last_synced_at || undefined,
-      createdAt: item.created_at,
-      updatedAt: item.updated_at,
-    };
-  });
+      return {
+        id: item.id,
+        userId: item.user_id,
+        itemId: item.item_id,
+        accessToken,
+        institutionId: item.institution_id || undefined,
+        institutionName: item.institution_name || undefined,
+        lastSyncedAt: item.last_synced_at || undefined,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
+      };
+    }
+  );
 }
 
 export async function getPlaidItemByItemId(

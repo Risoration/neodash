@@ -70,10 +70,9 @@ export async function POST(request: Request) {
           const value = quantity * price;
 
           cryptoCoins.push({
-            id: security.security_id,
             symbol,
             name: security.name || symbol,
-            amount: quantity,
+            holdings: quantity,
             price,
             value,
             change24h: 0, // Plaid doesn't provide 24h change in holdings
@@ -108,7 +107,7 @@ export async function POST(request: Request) {
           // Update existing coin
           mergedCoins[existingIndex] = {
             ...mergedCoins[existingIndex],
-            amount: newCoin.amount,
+            holdings: newCoin.holdings,
             price: newCoin.price,
             value: newCoin.value,
           };

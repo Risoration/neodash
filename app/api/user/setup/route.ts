@@ -32,7 +32,7 @@ interface CryptoHoldingInput {
 
 interface SetupPayload {
   crypto?: {
-    method?: 'manual' | 'exchange' | 'wallet' | 'browser-wallet';
+    method?: 'manual' | 'exchange' | 'wallet' | 'browser-wallet' | 'plaid';
     holdings?: CryptoHoldingInput[];
     exchange?: 'binance' | 'coinbase' | 'kraken';
     apiKey?: string;

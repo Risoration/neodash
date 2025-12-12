@@ -202,7 +202,12 @@ async function ensureUserRecords(userId: string): Promise<void> {
     await supabase.from('user_config').insert({
       user_id: userId,
       setup_completed: false,
-      sections: { crypto: false, productivity: false, weather: false, financial: false },
+      sections: {
+        crypto: false,
+        productivity: false,
+        weather: false,
+        financial: false,
+      },
       productivity_goals: null,
       preferences: {},
     });
@@ -399,7 +404,9 @@ export function isPlaceholderProductivityData(
 }
 
 // User Config functions
-export async function getUserConfig(userId: string): Promise<UserConfig | null> {
+export async function getUserConfig(
+  userId: string
+): Promise<UserConfig | null> {
   const { data, error } = await supabase
     .from('user_config')
     .select('*')
@@ -414,7 +421,7 @@ export async function getUserConfig(userId: string): Promise<UserConfig | null> 
     userId: data.user_id,
     setupCompleted: data.setup_completed,
     sections: data.sections as UserConfig['sections'],
-    productivityGoals: data.productivity_goals as ProductivityGoals | null,
+    productivityGoals: data.productivity_goals as ProductivityGoals | undefined,
     preferences: data.preferences as UserConfig['preferences'],
   };
 }
@@ -442,7 +449,7 @@ export async function updateUserConfig(
       .select('preferences')
       .eq('user_id', userId)
       .single();
-    
+
     updateData.preferences = {
       ...(current?.preferences || {}),
       ...updates.preferences,
@@ -467,7 +474,8 @@ export async function updateUserData(
 
   const updateData: any = {};
   if (data.crypto !== undefined) updateData.crypto = data.crypto;
-  if (data.productivity !== undefined) updateData.productivity = data.productivity;
+  if (data.productivity !== undefined)
+    updateData.productivity = data.productivity;
   if (data.weather !== undefined) updateData.weather = data.weather;
   if (data.financial !== undefined) updateData.financial = data.financial;
 
@@ -487,12 +495,12 @@ export async function updateUserDataSection<T extends UserDataSection>(
   data: T extends 'crypto'
     ? CryptoData | null
     : T extends 'productivity'
-    ? ProductivityData | null
-    : T extends 'weather'
-    ? WeatherData | null
-    : T extends 'financial'
-    ? FinancialData | null
-    : never
+      ? ProductivityData | null
+      : T extends 'weather'
+        ? WeatherData | null
+        : T extends 'financial'
+          ? FinancialData | null
+          : never
 ): Promise<void> {
   await ensureUserRecords(userId);
 
@@ -608,7 +616,9 @@ export async function getActiveFocusSession(
   };
 }
 
-export async function createFocusSession(userId: string): Promise<FocusSession> {
+export async function createFocusSession(
+  userId: string
+): Promise<FocusSession> {
   const { data, error } = await supabase
     .from('focus_sessions')
     .insert({
@@ -709,7 +719,9 @@ export async function startBreak(
   });
 }
 
-export async function resumeFocus(sessionId: string): Promise<FocusSession | null> {
+export async function resumeFocus(
+  sessionId: string
+): Promise<FocusSession | null> {
   // Get current session
   const { data: sessionData } = await supabase
     .from('focus_sessions')
@@ -732,7 +744,9 @@ export async function resumeFocus(sessionId: string): Promise<FocusSession | nul
   });
 }
 
-export async function endFocusSession(sessionId: string): Promise<FocusSession | null> {
+export async function endFocusSession(
+  sessionId: string
+): Promise<FocusSession | null> {
   // Get current session
   const { data: sessionData } = await supabase
     .from('focus_sessions')
@@ -758,9 +772,7 @@ export async function endFocusSession(sessionId: string): Promise<FocusSession |
   });
 }
 
-export async function getFocusSessionStats(
-  userId: string
-): Promise<{
+export async function getFocusSessionStats(userId: string): Promise<{
   totalFocusSeconds: number;
   totalBreakSeconds: number;
   breaksTaken: number;
@@ -776,9 +788,22 @@ export async function getFocusSessionStats(
   }
 
   return data.reduce(
-    (acc, session) => ({
-      totalFocusSeconds: acc.totalFocusSeconds + (session.total_focus_seconds || 0),
-      totalBreakSeconds: acc.totalBreakSeconds + (session.total_break_seconds || 0),
+    (
+      acc: {
+        totalFocusSeconds: number;
+        totalBreakSeconds: number;
+        breaksTaken: number;
+      },
+      session: {
+        total_focus_seconds: number;
+        total_break_seconds: number;
+        breaks_taken: number;
+      }
+    ) => ({
+      totalFocusSeconds:
+        acc.totalFocusSeconds + (session.total_focus_seconds || 0),
+      totalBreakSeconds:
+        acc.totalBreakSeconds + (session.total_break_seconds || 0),
       breaksTaken: acc.breaksTaken + (session.breaks_taken || 0),
     }),
     { totalFocusSeconds: 0, totalBreakSeconds: 0, breaksTaken: 0 }
@@ -789,7 +814,9 @@ export function generateExtensionApiKey(userId: string): string {
   return `ext_${userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
-export async function syncFocusSessionToProductivity(userId: string): Promise<void> {
+export async function syncFocusSessionToProductivity(
+  userId: string
+): Promise<void> {
   const stats = await getFocusSessionStats(userId);
   const today = new Date().toISOString().split('T')[0];
   const weekStart = new Date();
@@ -804,26 +831,29 @@ export async function syncFocusSessionToProductivity(userId: string): Promise<vo
     .eq('status', 'completed')
     .gte('started_at', weekStartStr);
 
-  const todaySessions = sessions?.filter(
-    (s) => s.started_at.split('T')[0] === today
-  ) || [];
+  const todaySessions =
+    sessions?.filter(
+      (s: { started_at: string }) => s.started_at.split('T')[0] === today
+    ) || [];
   const weekSessions = sessions || [];
 
   const todayFocusSeconds = todaySessions.reduce(
-    (sum, s) => sum + (s.total_focus_seconds || 0),
+    (sum: number, s: { total_focus_seconds?: number }) =>
+      sum + (s.total_focus_seconds || 0),
     0
   );
   const weekFocusSeconds = weekSessions.reduce(
-    (sum, s) => sum + (s.total_focus_seconds || 0),
+    (sum: number, s: { total_focus_seconds?: number }) =>
+      sum + (s.total_focus_seconds || 0),
     0
   );
 
   const todayBreaks = todaySessions.reduce(
-    (sum, s) => sum + (s.breaks_taken || 0),
+    (sum: number, s: { breaks_taken?: number }) => sum + (s.breaks_taken || 0),
     0
   );
   const weekBreaks = weekSessions.reduce(
-    (sum, s) => sum + (s.breaks_taken || 0),
+    (sum: number, s: { breaks_taken?: number }) => sum + (s.breaks_taken || 0),
     0
   );
 
@@ -891,4 +921,3 @@ export function readUserConfigs(): Record<string, UserConfig> {
   // Keeping for backward compatibility
   return {};
 }
-
